@@ -23,19 +23,13 @@ import { useHotkeys } from "@/hooks/use-hotkeys"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import type { Release } from "@/lib/api/types"
 
-import {
-  useMarkRead,
-  useMarkUnread,
-  useRelease,
-  useReleaseList,
-  useUnsubscribe,
-  useViewCounts,
-} from "./api"
+import { useMarkUnread, useRelease, useReleaseList, useViewCounts } from "./api"
 import type { ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
 import { ViewTabs } from "./components/view-tabs"
 import { releaseTitle } from "./release-title"
+import { useDeferredActions } from "./use-deferred-actions"
 import { useInboxRoute } from "./use-inbox-route"
 
 const SEARCH_DEBOUNCE_MS = 250
@@ -60,7 +54,23 @@ export function InboxPage({ username }: { username: string }) {
   const list = useReleaseList(route.view, route.search)
   const counts = useViewCounts(route.search)
   const detail = useRelease(route.releaseId)
-  const items = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data])
+  const deferred = useDeferredActions()
+  const { isHidden } = deferred
+  const items = useMemo(
+    () =>
+      (list.data?.pages.flatMap((page) => page.items) ?? []).filter(
+        (item) => !isHidden(item.repository.id, route.view)
+      ),
+    [list.data, isHidden, route.view]
+  )
+  const viewCounts = counts.data && {
+    ...counts.data,
+    [route.view]: Math.max(
+      0,
+      counts.data[route.view] -
+        deferred.pending.filter((action) => action.hideFrom === route.view).length
+    ),
+  }
 
   const listItem = items.find((item) => item.id === route.releaseId)
   const selected: Release | undefined = detail.data ?? listItem
@@ -68,9 +78,7 @@ export function InboxPage({ username }: { username: string }) {
     ? items.findIndex((item) => item.repository.id === selected.repository.id)
     : -1
 
-  const markRead = useMarkRead()
   const markUnread = useMarkUnread()
-  const unsubscribe = useUnsubscribe()
 
   /** Moves the selection off a release that is about to leave the current view. */
   function advanceFrom(release: Release) {
@@ -84,16 +92,18 @@ export function InboxPage({ username }: { username: string }) {
     route.selectRelease(next?.id ?? null)
   }
 
+  /** Undoable: the release and older ones are marked read once the undo toast closes. */
   function handleMarkRead(release: Release) {
-    if (route.view === "inbox") advanceFrom(release)
-    const input = { releaseId: release.id, repositoryId: release.repository.id }
-    markRead.mutate(input, {
-      onSuccess: () =>
-        toast.success("Marked as read", {
-          description: `${release.repository.full_name} · ${releaseTitle(release)}`,
-          action: { label: "Undo", onClick: () => markUnread.mutate(input) },
-        }),
-      onError: (error) => toast.error("Couldn't mark as read", { description: error.message }),
+    const leavesView = route.view === "inbox"
+    if (leavesView) advanceFrom(release)
+    deferred.schedule({
+      id: `read-${release.repository.id}`,
+      repositoryId: release.repository.id,
+      hideFrom: leavesView ? route.view : null,
+      path: `/releases/${release.id}/read`,
+      message: "Marked as read",
+      description: `${release.repository.full_name} · ${releaseTitle(release)}`,
+      errorMessage: "Couldn't mark as read",
     })
   }
 
@@ -108,20 +118,19 @@ export function InboxPage({ username }: { username: string }) {
     )
   }
 
+  /** Undoable: the repository is only unwatched on GitHub once the undo toast closes. */
   function handleUnsubscribe(release: Release) {
     const { repository } = release
-    unsubscribe.mutate(repository.id, {
-      onSuccess: () => {
-        if (route.view === "inbox") advanceFrom(release)
-        toast.success(`Unsubscribed from ${repository.full_name}`, {
-          description: "You won't get notifications from this repository anymore.",
-          action: {
-            label: "Open on GitHub",
-            onClick: () => window.open(repository.html_url, "_blank", "noopener,noreferrer"),
-          },
-        })
-      },
-      onError: (error) => toast.error("Couldn't unsubscribe", { description: error.message }),
+    const leavesView = route.view === "inbox"
+    if (leavesView) advanceFrom(release)
+    deferred.schedule({
+      id: `unsubscribe-${repository.id}`,
+      repositoryId: repository.id,
+      hideFrom: leavesView ? route.view : null,
+      path: `/repositories/${repository.id}/unsubscribe`,
+      message: `Unsubscribed from ${repository.full_name}`,
+      description: "You won't get notifications from this repository anymore.",
+      errorMessage: `Couldn't unsubscribe from ${repository.full_name}`,
     })
   }
 
@@ -152,7 +161,7 @@ export function InboxPage({ username }: { username: string }) {
   const listPane = (
     <section aria-label="Releases" className="flex h-full min-h-0 flex-col">
       <div className="border-b p-3">
-        <ViewTabs view={route.view} counts={counts.data} onChange={route.setView} />
+        <ViewTabs view={route.view} counts={viewCounts} onChange={route.setView} />
       </div>
       <ReleaseList
         view={route.view}
@@ -165,6 +174,7 @@ export function InboxPage({ username }: { username: string }) {
         isSelected={(item) => item.repository.id === selected?.repository.id}
         onSelect={(item) => route.selectRelease(item.id)}
         onMarkRead={route.view === "inbox" ? handleMarkRead : undefined}
+        onUnsubscribe={route.view === "inbox" ? handleUnsubscribe : undefined}
       />
     </section>
   )
@@ -182,7 +192,6 @@ export function InboxPage({ username }: { username: string }) {
         onMarkUnread: () => handleMarkUnread(selected),
         onHide: () => setHideTarget(selected),
         onUnsubscribe: () => handleUnsubscribe(selected),
-        isUnsubscribing: unsubscribe.isPending,
       }}
     />
   ) : route.releaseId !== null && detail.isPending ? (

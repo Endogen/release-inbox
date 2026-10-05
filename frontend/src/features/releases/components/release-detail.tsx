@@ -15,7 +15,6 @@ import { RepoAvatar, UserAvatar } from "@/components/repo-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
-import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Release } from "@/lib/api/types"
 
@@ -28,7 +27,6 @@ export interface ReleaseDetailActions {
   onMarkUnread: () => void
   onHide: () => void
   onUnsubscribe: () => void
-  isUnsubscribing: boolean
 }
 
 interface ReleaseDetailProps {
@@ -151,17 +149,8 @@ export function ReleaseDetail({
           </ActionButton>
           {!repository.unsubscribed_at && (
             <ActionButton label="Stop watching this repository on GitHub">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={actions.onUnsubscribe}
-                disabled={actions.isUnsubscribing}
-              >
-                {actions.isUnsubscribing ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <BellOffIcon data-icon="inline-start" />
-                )}
+              <Button size="sm" variant="outline" onClick={actions.onUnsubscribe}>
+                <BellOffIcon data-icon="inline-start" />
                 Unsubscribe
               </Button>
             </ActionButton>

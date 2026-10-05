@@ -18,16 +18,19 @@ interface RequestOptions {
   query?: Record<string, QueryValue>
   body?: unknown
   signal?: AbortSignal
+  /** Lets the request outlive the page, e.g. when it is sent while the tab closes. */
+  keepalive?: boolean
 }
 
 async function request<T>(
   method: string,
   path: string,
-  { query, body, signal }: RequestOptions = {}
+  { query, body, signal, keepalive }: RequestOptions = {}
 ): Promise<T> {
   const response = await fetch(buildUrl(path, query), {
     method,
     signal,
+    keepalive,
     credentials: "same-origin",
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -69,6 +72,7 @@ async function readErrorMessage(response: Response): Promise<string> {
 export const api = {
   get: <T>(path: string, options?: Omit<RequestOptions, "body">) =>
     request<T>("GET", path, options),
-  post: <T = void>(path: string, body?: unknown) => request<T>("POST", path, { body }),
+  post: <T = void>(path: string, body?: unknown, options?: Pick<RequestOptions, "keepalive">) =>
+    request<T>("POST", path, { body, ...options }),
   delete: <T = void>(path: string, body?: unknown) => request<T>("DELETE", path, { body }),
 }

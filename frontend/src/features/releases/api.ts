@@ -106,31 +106,15 @@ interface ReleaseActionInput {
   repositoryId: number
 }
 
-function useReleaseAction(path: (releaseId: number) => string, removeFrom: View) {
+/** Local only: GitHub has no API to mark a notification unread. */
+export function useMarkUnread() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ releaseId }: ReleaseActionInput) => api.post(path(releaseId)),
+    mutationFn: ({ releaseId }: ReleaseActionInput) => api.post(`/releases/${releaseId}/unread`),
     onMutate: async ({ repositoryId }) => {
       await queryClient.cancelQueries({ queryKey: releaseKeys.lists() })
-      removeFromList(queryClient, removeFrom, repositoryId)
+      removeFromList(queryClient, "read", repositoryId)
     },
-    onSettled: () => queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
-  })
-}
-
-export function useMarkRead() {
-  return useReleaseAction((id) => `/releases/${id}/read`, "inbox")
-}
-
-export function useMarkUnread() {
-  return useReleaseAction((id) => `/releases/${id}/unread`, "read")
-}
-
-export function useUnsubscribe() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: (repositoryId: number) => api.post(`/repositories/${repositoryId}/unsubscribe`),
-    onSuccess: (_, repositoryId) => removeFromList(queryClient, "inbox", repositoryId),
     onSettled: () => queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
   })
 }

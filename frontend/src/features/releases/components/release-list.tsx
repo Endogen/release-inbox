@@ -26,6 +26,7 @@ interface ReleaseListProps {
   isSelected: (release: ReleaseListItemData) => boolean
   onSelect: (release: ReleaseListItemData) => void
   onMarkRead?: (release: ReleaseListItemData) => void
+  onUnsubscribe?: (release: ReleaseListItemData) => void
 }
 
 export function ReleaseList({
@@ -39,6 +40,7 @@ export function ReleaseList({
   isSelected,
   onSelect,
   onMarkRead,
+  onUnsubscribe,
 }: ReleaseListProps) {
   const selectedRef = useRef<HTMLLIElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -77,6 +79,11 @@ export function ReleaseList({
               selected={selected}
               onSelect={() => onSelect(release)}
               onMarkRead={onMarkRead && (() => onMarkRead(release))}
+              onUnsubscribe={
+                onUnsubscribe && !release.repository.unsubscribed_at
+                  ? () => onUnsubscribe(release)
+                  : undefined
+              }
             />
           )
         })}

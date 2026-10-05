@@ -13,6 +13,10 @@ when something new ships.
 - **Hide components.** Hide releases of a single component of a repository, such as `web@*` in
   a monorepo, without unsubscribing. Hidden releases stay available in the *Hidden* view.
 - **Unsubscribe in one click.** Stops watching the repository on GitHub.
+- **Swipe to triage.** In the inbox, swipe an entry left to mark it as read or right to
+  unsubscribe. Both actions, whether you swipe, click or use a shortcut, show a toast with
+  **Undo** for six seconds. The change is only sent to GitHub after that, so undoing leaves
+  GitHub untouched. If you close the tab during that time, the action is sent immediately.
 - **Release notes and README** rendered as GitHub-flavoured markdown.
 - **Search** across repositories, release names, tags and notes.
 - **Live updates and push notifications.** GitHub is polled every minute (at the interval GitHub
