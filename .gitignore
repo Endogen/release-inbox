@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local configuration and data
+.env
+data/
+
+# Editors
+.vscode/
+.idea/
+
+# Agent skills (restore with `npx skills experimental_install` from skills-lock.json)
+.agents/
+.claude/skills/

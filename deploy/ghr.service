@@ -1,0 +1,30 @@
+[Unit]
+Description=GitHub release inbox
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ghr
+Group=ghr
+WorkingDirectory=/opt/ghr/backend
+EnvironmentFile=/etc/ghr/ghr.env
+ExecStartPre=/opt/ghr/backend/.venv/bin/ghr migrate
+# A single process: notification polling and live updates run inside the server.
+ExecStart=/opt/ghr/backend/.venv/bin/ghr serve --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+StateDirectory=ghr
+ReadWritePaths=/var/lib/ghr
+
+[Install]
+WantedBy=multi-user.target

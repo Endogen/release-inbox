@@ -1,0 +1,52 @@
+[project]
+name = "ghr"
+version = "0.1.0"
+description = "Self-hosted inbox for GitHub release notifications"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.0",
+    "fastapi>=0.142.2",
+    "httpx>=0.28.1",
+    "itsdangerous>=2.2.0",
+    "pwdlib[argon2]>=0.3.1",
+    "pydantic-settings>=2.15.0",
+    "pywebpush>=2.5.0",
+    "sqlalchemy[asyncio]>=2",
+    "typer>=0.27.2",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+ghr = "ghr.cli:cli"
+
+[build-system]
+requires = ["uv_build>=0.11.29,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "respx>=0.23.1",
+    "ruff>=0.16.10",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "ASYNC", "RUF", "N", "PL"]
+ignore = ["PLR0913"]
+
+[tool.ruff.lint.per-file-ignores]
+# Literal status codes and counts keep assertions readable.
+"tests/**" = ["PLR2004"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ghr"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

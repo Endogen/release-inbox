@@ -1,0 +1,89 @@
+/** Types mirroring the backend API schemas (backend/src/ghr/schemas.py). */
+
+export type View = "inbox" | "read" | "hidden"
+
+export const VIEWS: readonly View[] = ["inbox", "read", "hidden"]
+
+export interface Repository {
+  id: number
+  full_name: string
+  owner_login: string
+  owner_avatar_url: string
+  html_url: string
+  description: string | null
+  private: boolean
+  unsubscribed_at: string | null
+}
+
+export interface Release {
+  id: number
+  tag_name: string
+  name: string | null
+  html_url: string
+  author_login: string | null
+  author_avatar_url: string | null
+  prerelease: boolean
+  published_at: string
+  read_at: string | null
+  is_hidden: boolean
+  repository: Repository
+}
+
+export interface ReleaseListItem extends Release {
+  older_count: number
+}
+
+export interface ReleaseDetail extends Release {
+  body: string | null
+}
+
+export interface ReleasePage {
+  items: ReleaseListItem[]
+  total: number
+}
+
+export type ViewCounts = Record<View, number>
+
+export interface ReleaseRef {
+  id: number
+  tag_name: string
+  name: string | null
+  published_at: string
+  read_at: string | null
+  is_hidden: boolean
+}
+
+export interface HideRule {
+  id: number
+  pattern: string
+  created_at: string
+  repository: Repository
+  match_count: number
+}
+
+export interface HideRulePreview {
+  total: number
+  matches: ReleaseRef[]
+}
+
+export interface Readme {
+  content: string
+  html_url: string
+  download_url: string
+}
+
+export interface SyncStatus {
+  last_synced_at: string | null
+  last_attempt_at: string | null
+  last_error: string | null
+  in_progress: boolean
+}
+
+export interface CurrentUser {
+  username: string
+}
+
+export interface PushConfig {
+  enabled: boolean
+  public_key: string | null
+}
