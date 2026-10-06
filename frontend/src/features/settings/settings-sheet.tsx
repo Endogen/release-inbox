@@ -125,11 +125,14 @@ function NotificationSettings() {
   function test() {
     sendTest.mutate(undefined, {
       onSuccess: ({ delivered }) => {
-        const entries = Object.entries(delivered) as [NotificationChannel["name"], boolean][]
+        const entries = (Object.entries(delivered) as [NotificationChannel["name"], boolean][])
+          // Browser push only reaches devices that turned it on; that isn't a failure here.
+          .filter(([name, ok]) => ok || name !== "web-push" || push.isSubscribed)
+        const sent = entries.filter(([, ok]) => ok).map(([name]) => CHANNEL_LABELS[name])
         const failed = entries.filter(([, ok]) => !ok).map(([name]) => CHANNEL_LABELS[name])
-        if (entries.length === 0) toast.error("No notification channel is set up")
-        else if (failed.length > 0) toast.error(`Couldn't deliver via ${failed.join(", ")}`)
-        else toast.success("Test notification sent")
+        if (failed.length > 0) toast.error(`Couldn't deliver via ${failed.join(", ")}`)
+        else if (sent.length > 0) toast.success(`Test notification sent via ${sent.join(", ")}`)
+        else toast.info("Turn on browser push or set up ntfy or Telegram to receive notifications.")
       },
       onError: (error) => toast.error(error.message),
     })

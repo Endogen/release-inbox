@@ -9,8 +9,10 @@ from typing import Protocol
 _BREAKING_CHANGES = re.compile(r"breaking[\s_-]+changes?", re.IGNORECASE)
 # An upper-case "BREAKING" marker, or a conventional-commit entry like "feat!:" / "fix(api)!:".
 _BREAKING_MARKERS = re.compile(r"\bBREAKING\b|^\s*[-*]?\s*\w+(?:\([^)]*\))?!:", re.MULTILINE)
-# A version starts where a digit (optionally prefixed by "v") begins a new word.
-_VERSION = re.compile(r"(?<![a-z0-9])v?(?P<major>\d+)(?:\.(?P<minor>\d+))?(?:\.\d+)?", re.I)
+# A dotted version ("1.2", "v2.0.1") starting where a digit (optionally after "v") begins a word.
+_VERSION = re.compile(r"(?<![a-z0-9])v?(?P<major>\d+)\.(?P<minor>\d+)", re.I)
+# Majors this large are build numbers or calendar versions (2026.10), not semantic versions.
+_MAX_SEMANTIC_MAJOR = 999
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,11 +42,11 @@ def mentions_breaking_changes(body: str | None) -> bool:
 
 
 def is_major_bump(current: ComponentVersion, previous: ComponentVersion | None) -> bool:
-    """A new major version of the same component; ``0.x`` releases are not considered."""
+    """A new major version of the same component; ``0.x`` and calendar versions don't count."""
     return (
         previous is not None
         and current.component == previous.component
-        and current.major >= 1
+        and 1 <= current.major <= _MAX_SEMANTIC_MAJOR
         and current.major > previous.major
     )
 
