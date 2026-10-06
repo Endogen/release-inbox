@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.db import utcnow
@@ -38,16 +39,26 @@ class ReadmeService:
         if result is NOT_MODIFIED:
             assert cached is not None  # a conditional request requires a cached etag
             cached.fetched_at = utcnow()
-        else:
-            cached = await self._session.merge(
-                Readme(
-                    repository_id=repository_id,
-                    content=result.content,
-                    html_url=result.html_url,
-                    download_url=result.download_url,
-                    etag=result.etag,
-                    fetched_at=utcnow(),
-                )
+            await self._session.commit()
+            return ReadmeOut.model_validate(cached)
+
+        # Upsert: two first visits at the same time must not both try to insert.
+        values = {
+            "repository_id": repository_id,
+            "content": result.content,
+            "html_url": result.html_url,
+            "download_url": result.download_url,
+            "etag": result.etag,
+            "fetched_at": utcnow(),
+        }
+        statement = sqlite_insert(Readme).values(**values)
+        await self._session.execute(
+            statement.on_conflict_do_update(
+                index_elements=[Readme.repository_id],
+                set_={key: statement.excluded[key] for key in values if key != "repository_id"},
             )
+        )
         await self._session.commit()
-        return ReadmeOut.model_validate(cached)
+        return ReadmeOut(
+            content=result.content, html_url=result.html_url, download_url=result.download_url
+        )

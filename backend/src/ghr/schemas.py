@@ -1,8 +1,8 @@
 """Request and response models of the HTTP API."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 
 class Schema(BaseModel):
@@ -33,8 +33,10 @@ class ReleaseOut(Schema):
     author_login: str | None
     author_avatar_url: str | None
     prerelease: bool
+    breaking: bool
     published_at: datetime
     read_at: datetime | None
+    snoozed_until: datetime | None
     is_hidden: bool
     repository: RepositoryOut
 
@@ -54,6 +56,7 @@ class ReleasePage(Schema):
 
 class ViewCounts(Schema):
     inbox: int
+    snoozed: int
     read: int
     hidden: int
 
@@ -65,6 +68,17 @@ class ReleaseRef(Schema):
     published_at: datetime
     read_at: datetime | None
     is_hidden: bool
+
+
+class SnoozeRequest(BaseModel):
+    until: AwareDatetime
+
+    @field_validator("until")
+    @classmethod
+    def _in_future(cls, value: datetime) -> datetime:
+        if value <= datetime.now(UTC):
+            raise ValueError("The snooze time must be in the future")
+        return value
 
 
 class HideRuleCreate(BaseModel):
@@ -113,6 +127,39 @@ class Credentials(BaseModel):
 
 class CurrentUser(Schema):
     username: str
+
+
+class PreferencesOut(Schema):
+    show_prereleases: bool
+    notify_prereleases: bool
+
+
+class PreferencesUpdate(BaseModel):
+    show_prereleases: bool | None = None
+    notify_prereleases: bool | None = None
+
+
+class NotificationChannelOut(Schema):
+    name: str
+    configured: bool
+
+
+class NotificationTestResult(Schema):
+    delivered: dict[str, bool]
+
+
+class SummaryConfig(Schema):
+    enabled: bool
+    model: str | None
+
+
+class SummaryRequest(BaseModel):
+    release_ids: list[int] = Field(min_length=1, max_length=20)
+
+
+class SummaryOut(Schema):
+    content: str
+    model: str
 
 
 class PushConfig(Schema):

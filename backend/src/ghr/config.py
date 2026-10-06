@@ -37,10 +37,44 @@ class Settings(BaseSettings):
         description="Minimum delay between notification polls. GitHub may request a longer one.",
     )
     readme_cache_seconds: int = 3600
+    release_refresh_interval_seconds: int = Field(
+        default=1800,
+        ge=300,
+        description="How often recent releases are re-checked for edited notes or promotions.",
+    )
+    release_refresh_days: int = Field(
+        default=14, ge=1, description="Releases published within this many days are re-checked."
+    )
+
+    login_max_failures: int = Field(
+        default=10, ge=1, description="Failed sign-ins per client address before it is blocked."
+    )
+    login_window_seconds: int = Field(default=900, ge=60)
+
+    enable_api_docs: bool = Field(
+        default=False, description="Serve the interactive API docs at /api/docs."
+    )
+    public_url: str | None = Field(
+        default=None,
+        description="Address the app is reachable at, e.g. https://releases.example.com. "
+        "Used for links in ntfy and Telegram notifications.",
+    )
 
     vapid_public_key: str | None = None
     vapid_private_key: SecretStr | None = None
     vapid_subject: str = "mailto:admin@localhost"
+
+    ntfy_url: str | None = Field(
+        default=None, description="ntfy topic URL, e.g. https://ntfy.sh/my-secret-topic."
+    )
+    ntfy_token: SecretStr | None = None
+    telegram_bot_token: SecretStr | None = None
+    telegram_chat_id: str | None = None
+
+    anthropic_api_key: SecretStr | None = Field(
+        default=None, description="Enables AI summaries of release notes."
+    )
+    anthropic_model: str = "claude-opus-5-5"
 
     @property
     def database_url(self) -> str:

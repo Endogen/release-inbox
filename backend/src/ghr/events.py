@@ -35,8 +35,9 @@ class EventBroker:
 
     def publish(self, event: Event) -> None:
         for queue in self._subscribers:
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                # A stalled client only misses this update; it resynchronises on its next refetch.
-                logger.warning("Dropping %s event for a slow subscriber", event.type)
+            if queue.full():
+                # Drop the oldest event so a stalled client still receives the latest state
+                # (for example the final "sync finished" status).
+                queue.get_nowait()
+                logger.warning("Dropped an event for a slow subscriber")
+            queue.put_nowait(event)

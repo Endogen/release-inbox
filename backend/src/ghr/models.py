@@ -2,7 +2,16 @@
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ghr.db import Base, UtcDateTime, utcnow
@@ -32,6 +41,11 @@ class Repository(Base):
 
 class Release(Base):
     __tablename__ = "releases"
+    __table_args__ = (
+        # Newest-per-repository listing and "older unread" lookups.
+        Index("ix_releases_repository_published", "repository_id", "published_at"),
+        Index("ix_releases_repository_read", "repository_id", "read_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     repository_id: Mapped[int] = mapped_column(
@@ -47,6 +61,12 @@ class Release(Base):
     prerelease: Mapped[bool] = mapped_column(Boolean, default=False)
     published_at: Mapped[datetime] = mapped_column(UtcDateTime, index=True)
     read_at: Mapped[datetime | None] = mapped_column(UtcDateTime, index=True)
+    #: Hidden from the inbox until this time.
+    snoozed_until: Mapped[datetime | None] = mapped_column(UtcDateTime, index=True)
+    #: The notes announce breaking changes, or the version is a new major version.
+    breaking: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    #: ETag of the last fetch, so refreshes are conditional requests.
+    etag: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     repository: Mapped[Repository] = relationship(back_populates="releases")
@@ -90,6 +110,28 @@ class PushSubscription(Base):
     endpoint: Mapped[str] = mapped_column(String(2048), unique=True)
     p256dh: Mapped[str] = mapped_column(String(255))
     auth: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
+
+
+class Preferences(Base):
+    """Single-row table with settings the user changes in the app."""
+
+    __tablename__ = "preferences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    show_prereleases: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    notify_prereleases: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+
+
+class Summary(Base):
+    """Cached AI summary of one or more releases."""
+
+    __tablename__ = "summaries"
+
+    #: Hash of the model and the summarised release notes; changes when the notes change.
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 

@@ -20,13 +20,22 @@ class HideRuleService:
         self._broker = broker
 
     async def list(self) -> list[HideRuleOut]:
-        rules = await self._session.scalars(
-            select(HideRule)
+        match_count = (
+            select(func.count(Release.id))
+            .where(
+                Release.repository_id == HideRule.repository_id,
+                matches_pattern(HideRule.pattern),
+            )
+            .correlate(HideRule)
+            .scalar_subquery()
+        )
+        rows = await self._session.execute(
+            select(HideRule, match_count)
             .options(selectinload(HideRule.repository))
             .join(HideRule.repository)
             .order_by(Repository.full_name, HideRule.pattern)
         )
-        return [await self._to_out(rule) for rule in rules]
+        return [_to_out(rule, count) for rule, count in rows]
 
     async def create(self, repository_id: int, pattern: str) -> HideRuleOut:
         repository = await self._session.get(Repository, repository_id)
@@ -81,10 +90,14 @@ class HideRuleService:
                 Release.repository_id == rule.repository_id, matches_pattern(rule.pattern)
             )
         )
-        return HideRuleOut(
-            id=rule.id,
-            pattern=rule.pattern,
-            created_at=rule.created_at,
-            repository=RepositoryOut.model_validate(rule.repository),
-            match_count=match_count or 0,
-        )
+        return _to_out(rule, match_count or 0)
+
+
+def _to_out(rule: HideRule, match_count: int) -> HideRuleOut:
+    return HideRuleOut(
+        id=rule.id,
+        pattern=rule.pattern,
+        created_at=rule.created_at,
+        repository=RepositoryOut.model_validate(rule.repository),
+        match_count=match_count,
+    )

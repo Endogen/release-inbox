@@ -2,10 +2,13 @@
 
 import base64
 import logging
+import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from enum import Enum
 from typing import Final, Self
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -16,19 +19,37 @@ logger = logging.getLogger(__name__)
 API_VERSION = "2022-11-28"
 NOTIFICATIONS_PAGE_SIZE = 50
 
+# Failures that concern a single resource; retrying the whole sync won't change them.
+_RESOURCE_UNAVAILABLE = frozenset({403, 404, 410, 451})
+
 
 class GitHubError(Exception):
-    def __init__(self, status_code: int, message: str) -> None:
+    def __init__(
+        self, status_code: int, message: str, *, retry_after_seconds: int | None = None
+    ) -> None:
         super().__init__(f"GitHub API error {status_code}: {message}")
         self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
+
+    @property
+    def is_rate_limited(self) -> bool:
+        return self.retry_after_seconds is not None
+
+    @property
+    def is_resource_unavailable(self) -> bool:
+        """The resource is gone or inaccessible (for example SSO enforcement or a takedown)."""
+        return self.status_code in _RESOURCE_UNAVAILABLE and not self.is_rate_limited
 
 
-@dataclass(frozen=True, slots=True)
-class NotificationsResult:
-    threads: list[NotificationThread]
-    not_modified: bool
-    last_modified: str | None
-    poll_interval_seconds: int | None
+class UntrustedUrlError(GitHubError):
+    """A URL from a GitHub payload points outside the API origin and was not requested."""
+
+    def __init__(self, url: str) -> None:
+        super().__init__(0, f"Refusing to call a URL outside the GitHub API: {url}")
+
+    @property
+    def is_resource_unavailable(self) -> bool:
+        return True
 
 
 class NotModified(Enum):
@@ -41,6 +62,22 @@ NOT_MODIFIED: Final = NotModified.TOKEN
 
 
 @dataclass(frozen=True, slots=True)
+class NotificationsResult:
+    threads: list[NotificationThread]
+    not_modified: bool
+    last_modified: str | None
+    poll_interval_seconds: int | None
+    #: GitHub's clock at the time of the request, used as the next ``since`` value.
+    server_time: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class FetchedRelease:
+    release: GitHubRelease
+    etag: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ReadmeResult:
     content: str
     html_url: str
@@ -50,6 +87,7 @@ class ReadmeResult:
 
 class GitHubClient:
     def __init__(self, token: str, base_url: str) -> None:
+        self._origin = _origin(base_url)
         self._http = httpx.AsyncClient(
             base_url=base_url,
             headers={
@@ -59,6 +97,9 @@ class GitHubClient:
                 "User-Agent": "ghr-release-inbox",
             },
             timeout=httpx.Timeout(20.0),
+            # Renamed and transferred repositories answer with 301. httpx drops the
+            # Authorization header when a redirect leaves the API origin.
+            follow_redirects=True,
         )
 
     async def __aenter__(self) -> Self:
@@ -80,31 +121,42 @@ class GitHubClient:
         """
         params: dict[str, str | int] = {"all": "true", "per_page": NOTIFICATIONS_PAGE_SIZE}
         if since is not None:
-            params["since"] = since.isoformat()
+            params["since"] = format_timestamp(since)
         headers = {"If-Modified-Since": if_modified_since} if if_modified_since else {}
 
         response = await self._http.get("/notifications", params=params, headers=headers)
         poll_interval = _parse_int(response.headers.get("X-Poll-Interval"))
+        server_time = _parse_http_date(response.headers.get("Date"))
         if response.status_code == httpx.codes.NOT_MODIFIED:
-            return NotificationsResult([], True, if_modified_since, poll_interval)
+            return NotificationsResult([], True, if_modified_since, poll_interval, server_time)
         _raise_for_status(response)
 
         last_modified = response.headers.get("Last-Modified")
         threads = _parse_threads(response)
         while next_url := response.links.get("next", {}).get("url"):
-            response = await self._http.get(next_url)
+            response = await self._http.get(self._checked(next_url))
             _raise_for_status(response)
             threads.extend(_parse_threads(response))
 
-        return NotificationsResult(threads, False, last_modified, poll_interval)
+        return NotificationsResult(threads, False, last_modified, poll_interval, server_time)
 
-    async def get_release(self, url: str) -> GitHubRelease | None:
-        """Fetch a release by its API URL. Returns ``None`` if it no longer exists."""
-        response = await self._http.get(url)
+    async def get_release(
+        self, url: str, *, etag: str | None = None
+    ) -> FetchedRelease | NotModified | None:
+        """Fetch a release by its API URL or path.
+
+        Returns ``None`` if it no longer exists and ``NOT_MODIFIED`` if ``etag`` still matches.
+        """
+        headers = {"If-None-Match": etag} if etag else {}
+        response = await self._http.get(self._checked(url), headers=headers)
+        if response.status_code == httpx.codes.NOT_MODIFIED:
+            return NOT_MODIFIED
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         _raise_for_status(response)
-        return GitHubRelease.model_validate(response.json())
+        return FetchedRelease(
+            GitHubRelease.model_validate(response.json()), response.headers.get("ETag")
+        )
 
     async def mark_thread_read(self, thread_id: str) -> None:
         response = await self._http.patch(f"/notifications/threads/{thread_id}")
@@ -143,6 +195,22 @@ class GitHubClient:
             etag=response.headers.get("ETag"),
         )
 
+    def _checked(self, url: str) -> str:
+        """Refuse absolute URLs outside the API origin, so the token never leaves GitHub."""
+        if urlsplit(url).scheme and _origin(url) != self._origin:
+            raise UntrustedUrlError(url)
+        return url
+
+
+def format_timestamp(value: datetime) -> str:
+    """ISO 8601 in the ``YYYY-MM-DDTHH:MM:SSZ`` form the GitHub API documents."""
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _origin(url: str) -> tuple[str, str]:
+    parts = urlsplit(url)
+    return parts.scheme.lower(), parts.netloc.lower()
+
 
 def _parse_threads(response: httpx.Response) -> list[NotificationThread]:
     return [NotificationThread.model_validate(item) for item in response.json()]
@@ -152,11 +220,40 @@ def _parse_int(value: str | None) -> int | None:
     return int(value) if value and value.isdigit() else None
 
 
+def _parse_http_date(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return parsedate_to_datetime(value).astimezone(UTC)
+    except (TypeError, ValueError):
+        return None
+
+
+def _retry_after_seconds(response: httpx.Response, message: str) -> int | None:
+    """Seconds to wait if the response is a primary or secondary rate limit, else ``None``."""
+    if response.status_code not in (httpx.codes.FORBIDDEN, httpx.codes.TOO_MANY_REQUESTS):
+        return None
+    if retry_after := _parse_int(response.headers.get("Retry-After")):
+        return retry_after
+    remaining = response.headers.get("X-RateLimit-Remaining")
+    reset = _parse_int(response.headers.get("X-RateLimit-Reset"))
+    if remaining == "0" and reset is not None:
+        return max(1, reset - int(time.time()))
+    if response.status_code == httpx.codes.TOO_MANY_REQUESTS or "rate limit" in message.lower():
+        # GitHub asks to wait at least a minute when no explicit hint is given.
+        return 60
+    return None
+
+
 def _raise_for_status(response: httpx.Response) -> None:
     if response.is_success:
         return
     try:
-        message = response.json().get("message", response.text)
+        message = str(response.json().get("message", response.text))
     except ValueError:
         message = response.text
-    raise GitHubError(response.status_code, message)
+    raise GitHubError(
+        response.status_code,
+        message,
+        retry_after_seconds=_retry_after_seconds(response, message),
+    )

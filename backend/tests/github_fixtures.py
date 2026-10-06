@@ -19,6 +19,8 @@ class FakeRelease:
     name: str | None = None
     body: str = "Release notes"
     unread: bool = True
+    prerelease: bool = False
+    draft: bool = False
 
     @property
     def thread_id(self) -> str:
@@ -54,8 +56,8 @@ class FakeRelease:
             "body": self.body,
             "html_url": f"https://github.com/{self.full_name}/releases/tag/{self.tag_name}",
             "author": {"login": "octocat", "avatar_url": "https://avatars.test/octocat"},
-            "prerelease": False,
-            "draft": False,
+            "prerelease": self.prerelease,
+            "draft": self.draft,
             "created_at": self.published_at,
             "published_at": self.published_at,
         }
@@ -76,19 +78,34 @@ ISSUE_NOTIFICATION = {
 }
 
 
+NOTIFICATION_HEADERS = {
+    "Last-Modified": "Mon, 05 Oct 2026 12:00:00 GMT",
+    "Date": "Mon, 05 Oct 2026 12:00:30 GMT",
+    "X-Poll-Interval": "60",
+}
+
+
 def mock_github(
     router: respx.MockRouter,
     releases: list[FakeRelease],
     *,
     extra_notifications: list[dict[str, Any]] | None = None,
-) -> None:
+) -> respx.Route:
+    """Serve the notifications list and every release. Returns the notifications route."""
     notifications = [release.notification() for release in releases]
-    router.get("/notifications").mock(
+    route = router.get("/notifications").mock(
         return_value=Response(
-            200,
-            json=notifications + (extra_notifications or []),
-            headers={"Last-Modified": "Mon, 05 Oct 2026 12:00:00 GMT", "X-Poll-Interval": "60"},
+            200, json=notifications + (extra_notifications or []), headers=NOTIFICATION_HEADERS
         )
     )
     for release in releases:
-        router.get(release.api_url).mock(return_value=Response(200, json=release.release()))
+        mock_release(router, release)
+    return route
+
+
+def mock_release(
+    router: respx.MockRouter, release: FakeRelease, *, etag: str = '"v1"'
+) -> respx.Route:
+    return router.get(release.api_url).mock(
+        return_value=Response(200, json=release.release(), headers={"ETag": etag})
+    )

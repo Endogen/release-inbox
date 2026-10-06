@@ -8,12 +8,21 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.container import Container
-from ghr.security import SESSION_USER_KEY
+from ghr.security import (
+    SESSION_CREDENTIAL_KEY,
+    SESSION_USER_KEY,
+    credential_fingerprint,
+    is_same_origin_request,
+)
 from ghr.services.hide_rules import HideRuleService
 from ghr.services.inbox import InboxService
+from ghr.services.preferences import PreferencesService
 from ghr.services.readme import ReadmeService
 from ghr.services.releases import ReleaseQueries
 from ghr.services.repositories import RepositoryService
+from ghr.services.summaries import SummaryService
+
+_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 def get_container(request: Request) -> Container:
@@ -32,9 +41,25 @@ async def get_session(container: ContainerDep) -> AsyncIterator[AsyncSession]:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def require_user(request: Request) -> str:
+def verify_same_origin(request: Request) -> None:
+    """Block cross-site requests that change state (CSRF), on top of ``SameSite=Lax``."""
+    if request.method not in _UNSAFE_METHODS:
+        return
+    if not is_same_origin_request(
+        sec_fetch_site=request.headers.get("sec-fetch-site"),
+        origin=request.headers.get("origin"),
+        expected_origin=f"{request.url.scheme}://{request.url.netloc}",
+    ):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cross-site requests aren't allowed")
+
+
+def require_user(request: Request, container: ContainerDep) -> str:
+    settings = container.settings
+    expected = credential_fingerprint(settings.username, settings.password_hash.get_secret_value())
     username: str | None = request.session.get(SESSION_USER_KEY)
-    if username is None:
+    if username is None or request.session.get(SESSION_CREDENTIAL_KEY) != expected:
+        # Sessions from before a password change are no longer valid.
+        request.session.clear()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sign in to continue")
     return username
 
@@ -58,6 +83,14 @@ def get_repository_service(session: SessionDep, container: ContainerDep) -> Repo
     return RepositoryService(session, container.broker)
 
 
+def get_preferences_service(session: SessionDep, container: ContainerDep) -> PreferencesService:
+    return PreferencesService(session, container.broker)
+
+
+def get_summary_service(session: SessionDep, container: ContainerDep) -> SummaryService:
+    return SummaryService(session, container.summarizer)
+
+
 def get_readme_service(session: SessionDep, container: ContainerDep) -> ReadmeService:
     return ReadmeService(
         session, container.github, timedelta(seconds=container.settings.readme_cache_seconds)
@@ -69,3 +102,5 @@ InboxServiceDep = Annotated[InboxService, Depends(get_inbox_service)]
 HideRuleServiceDep = Annotated[HideRuleService, Depends(get_hide_rule_service)]
 ReadmeServiceDep = Annotated[ReadmeService, Depends(get_readme_service)]
 RepositoryServiceDep = Annotated[RepositoryService, Depends(get_repository_service)]
+PreferencesServiceDep = Annotated[PreferencesService, Depends(get_preferences_service)]
+SummaryServiceDep = Annotated[SummaryService, Depends(get_summary_service)]

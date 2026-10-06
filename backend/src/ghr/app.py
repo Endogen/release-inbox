@@ -14,6 +14,7 @@ from ghr.config import Settings, get_settings
 from ghr.container import Container
 from ghr.errors import ConflictError, NotFoundError
 from ghr.github.client import GitHubError
+from ghr.services.summaries import SummaryError
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="GitHub Release Inbox",
         lifespan=lifespan,
-        docs_url="/api/docs",
-        openapi_url="/api/openapi.json",
+        # The API schema documents every endpoint; only expose it where that's wanted.
+        docs_url="/api/docs" if settings.enable_api_docs else None,
+        openapi_url="/api/openapi.json" if settings.enable_api_docs else None,
         redoc_url=None,
     )
     app.add_middleware(
@@ -59,6 +61,10 @@ def _register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def _conflict(_: Request, error: ConflictError) -> JSONResponse:
         return _error(status.HTTP_409_CONFLICT, str(error))
+
+    @app.exception_handler(SummaryError)
+    async def _summary(_: Request, error: SummaryError) -> JSONResponse:
+        return _error(status.HTTP_503_SERVICE_UNAVAILABLE, str(error))
 
     @app.exception_handler(GitHubError)
     async def _github(_: Request, error: GitHubError) -> JSONResponse:

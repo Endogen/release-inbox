@@ -1,4 +1,4 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, BackgroundTasks, status
 
 from ghr.api.deps import (
     InboxServiceDep,
@@ -6,14 +6,20 @@ from ghr.api.deps import (
     ReleaseQueriesDep,
     RepositoryServiceDep,
 )
-from ghr.schemas import ReadmeOut, ReleaseRef, RepositoryNotificationsUpdate, RepositoryOut
+from ghr.schemas import (
+    ReadmeOut,
+    ReleaseDetail,
+    ReleaseRef,
+    RepositoryNotificationsUpdate,
+    RepositoryOut,
+)
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
 @router.get("/muted")
 async def list_muted_repositories(repositories: RepositoryServiceDep) -> list[RepositoryOut]:
-    """Repositories whose new releases don't trigger push notifications."""
+    """Repositories whose new releases don't trigger notifications."""
     return await repositories.list_muted()
 
 
@@ -23,7 +29,7 @@ async def set_repository_notifications(
     payload: RepositoryNotificationsUpdate,
     repositories: RepositoryServiceDep,
 ) -> RepositoryOut:
-    """Turn push notifications for the repository on or off. Doesn't change anything on GitHub."""
+    """Turn notifications for the repository on or off. Doesn't change anything on GitHub."""
     return await repositories.set_notifications(repository_id, enabled=payload.enabled)
 
 
@@ -34,12 +40,23 @@ async def list_repository_releases(
     return await queries.list_for_repository(repository_id)
 
 
+@router.get("/{repository_id}/unread")
+async def list_unread_releases(
+    repository_id: int, queries: ReleaseQueriesDep
+) -> list[ReleaseDetail]:
+    """Unread inbox releases of the repository with their notes: what's new since last read."""
+    return await queries.list_unread_for_repository(repository_id)
+
+
 @router.get("/{repository_id}/readme")
 async def get_readme(repository_id: int, readmes: ReadmeServiceDep) -> ReadmeOut:
     return await readmes.get(repository_id)
 
 
 @router.post("/{repository_id}/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
-async def unsubscribe(repository_id: int, inbox: InboxServiceDep) -> None:
+async def unsubscribe(
+    repository_id: int, inbox: InboxServiceDep, background: BackgroundTasks
+) -> None:
     """Stop watching the repository on GitHub."""
-    await inbox.unsubscribe(repository_id)
+    thread_ids = await inbox.unsubscribe(repository_id)
+    background.add_task(inbox.mirror_read, thread_ids)

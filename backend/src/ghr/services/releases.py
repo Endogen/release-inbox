@@ -4,6 +4,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
+from ghr.db import utcnow
 from ghr.models import Release, Repository
 from ghr.schemas import (
     ReleaseDetail,
@@ -13,7 +14,11 @@ from ghr.schemas import (
     RepositoryOut,
     ViewCounts,
 )
-from ghr.services.filters import View, in_view, is_hidden, matches_search
+from ghr.services.filters import View, ViewContext, in_view, is_hidden, matches_search
+from ghr.services.preferences import load_preferences
+
+#: Upper bound for the combined "what's new" notes of one repository.
+MAX_UNREAD_RELEASES = 50
 
 
 class ReleaseQueries:
@@ -24,7 +29,7 @@ class ReleaseQueries:
         self, view: View, *, search: str | None, limit: int, offset: int
     ) -> ReleasePage:
         """Newest release of every repository in the view, newest first."""
-        filters = [in_view(view)]
+        filters = [in_view(view, await self._context())]
         if (search_filter := matches_search(search)) is not None:
             filters.append(search_filter)
 
@@ -62,13 +67,14 @@ class ReleaseQueries:
 
     async def count_by_view(self, *, search: str | None) -> ViewCounts:
         """Number of repositories with at least one release in each view."""
+        context = await self._context()
         search_filter = matches_search(search)
         counts: dict[View, int] = {}
         for view in View:
             statement = (
                 select(func.count(func.distinct(Release.repository_id)))
                 .join(Repository)
-                .where(in_view(view))
+                .where(in_view(view, context))
             )
             if search_filter is not None:
                 statement = statement.where(search_filter)
@@ -104,6 +110,27 @@ class ReleaseQueries:
             for release, hidden in rows
         ]
 
+    async def list_unread_for_repository(self, repository_id: int) -> list[ReleaseDetail]:
+        """Unread releases of a repository in the inbox, newest first: what changed since the
+        user last looked."""
+        rows = await self._session.execute(
+            _select_with_repository(is_hidden().label("is_hidden"))
+            .where(
+                Release.repository_id == repository_id,
+                in_view(View.INBOX, await self._context()),
+            )
+            .order_by(Release.published_at.desc(), Release.id.desc())
+            .limit(MAX_UNREAD_RELEASES)
+        )
+        return [
+            ReleaseDetail(**_release_fields(release, hidden), body=release.body)
+            for release, hidden in rows
+        ]
+
+    async def _context(self) -> ViewContext:
+        preferences = await load_preferences(self._session)
+        return ViewContext(now=utcnow(), include_prereleases=preferences.show_prereleases)
+
 
 def _select_with_repository(*columns: object) -> Select[tuple[Release, ...]]:
     return (
@@ -122,8 +149,10 @@ def _release_fields(release: Release, hidden: bool) -> dict[str, object]:
         "author_login": release.author_login,
         "author_avatar_url": release.author_avatar_url,
         "prerelease": release.prerelease,
+        "breaking": release.breaking,
         "published_at": release.published_at,
         "read_at": release.read_at,
+        "snoozed_until": release.snoozed_until,
         "is_hidden": hidden,
         "repository": RepositoryOut.model_validate(release.repository),
     }

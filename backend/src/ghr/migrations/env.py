@@ -9,7 +9,8 @@ from ghr.db import Base
 
 
 def run_migrations() -> None:
-    url = get_settings().sync_database_url
+    # An explicit URL (used by the tests) takes precedence over the application settings.
+    url = context.config.get_main_option("sqlalchemy.url") or get_settings().sync_database_url
     if context.is_offline_mode():
         context.configure(url=url, target_metadata=Base.metadata, render_as_batch=True)
         with context.begin_transaction():
