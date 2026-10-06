@@ -26,7 +26,14 @@ export function AppHeader({ username, search, onOpenSettings, onOpenShortcuts }:
         <SyncButton />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Settings" onClick={onOpenSettings}>
+            {/* On phones the account menu offers Settings, leaving room for the search. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Settings"
+              onClick={onOpenSettings}
+              className="hidden sm:inline-flex"
+            >
               <SettingsIcon />
             </Button>
           </TooltipTrigger>

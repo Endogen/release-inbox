@@ -336,7 +336,7 @@ class NotificationSyncService:
         self, error: Exception, *, retry_after: int | None = None
     ) -> SyncResult:
         logger.warning("Notification sync failed: %s", error)
-        message = str(error) or type(error).__name__
+        message = _describe_failure(error)
         async with self._session_factory() as session:
             state = await session.get(SyncState, _STATE_ID)
             assert state is not None  # created by _begin_attempt
@@ -439,3 +439,11 @@ def _release_id_from_api_url(url: str | None) -> int | None:
         return None
     last_segment = url.rstrip("/").rsplit("/", 1)[-1]
     return int(last_segment) if last_segment.isdigit() else None
+
+
+def _describe_failure(error: Exception) -> str:
+    """A message for the sync status; network errors often have no text of their own."""
+    detail = str(error) or type(error).__name__
+    if isinstance(error, httpx.TransportError):
+        return f"Couldn't reach GitHub ({detail})"
+    return detail

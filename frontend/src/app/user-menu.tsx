@@ -49,7 +49,7 @@ export function UserMenu({ username, onOpenSettings, onOpenShortcuts }: UserMenu
             <SettingsIcon />
             Settings
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onOpenShortcuts}>
+          <DropdownMenuItem onSelect={onOpenShortcuts} className="pointer-coarse:hidden">
             <KeyboardIcon />
             Keyboard shortcuts
             <DropdownMenuShortcut>?</DropdownMenuShortcut>

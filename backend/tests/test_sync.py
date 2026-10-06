@@ -4,7 +4,7 @@ import asyncio
 from datetime import timedelta
 
 import respx
-from httpx import AsyncClient, Response
+from httpx import AsyncClient, ConnectError, Response
 from sqlalchemy import select
 
 from ghr.container import Container
@@ -203,6 +203,16 @@ class TestFailures:
 
         assert result.error is not None
         assert (await sync_state(container)).last_error
+
+    async def test_network_failures_get_a_readable_message(
+        self, container: Container, github_api: respx.MockRouter
+    ) -> None:
+        github_api.get("/notifications").mock(side_effect=ConnectError(""))
+
+        result = await container.sync.sync()
+
+        assert result.error == "Couldn't reach GitHub (ConnectError)"
+        assert (await sync_state(container)).last_error == result.error
 
 
 async def test_user_actions_are_not_blocked_while_fetching(

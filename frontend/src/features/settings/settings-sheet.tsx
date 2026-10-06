@@ -21,7 +21,7 @@ interface SettingsSheetProps {
 export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full gap-0 sm:max-w-md">
+      <SheetContent className="gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md">
         <SheetHeader className="border-b">
           <SheetTitle>Settings</SheetTitle>
           <SheetDescription>
