@@ -64,7 +64,7 @@ export function ReleaseContent({
       onValueChange={(value) => onTabChange(value as ContentTab)}
       className="min-h-0 flex-1 gap-0"
     >
-      <div className="@container overflow-x-auto border-b px-6">
+      <div className="@container border-b px-6">
         <TabsList variant="line" className="h-11">
           <TabsTrigger value="notes">
             <ScrollTextIcon data-icon="inline-start" className="hidden @sm:block" />
