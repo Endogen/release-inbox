@@ -8,10 +8,10 @@ import {
   resolveUrl,
 } from "./markdown-urls"
 
-const README = fileBaseUrls(
-  "https://github.com/acme/app/blob/main/docs/README.md",
-  "https://raw.githubusercontent.com/acme/app/main/docs/README.md?token=SECRET"
-)
+const README = fileBaseUrls({
+  html_url: "https://github.com/acme/app/blob/main/docs/README.md",
+  download_url: "https://raw.githubusercontent.com/acme/app/main/docs/README.md?token=SECRET",
+})
 
 describe("resolveUrl", () => {
   it("resolves relative links and images against the file's directory", () => {
@@ -36,8 +36,17 @@ describe("resolveUrl", () => {
     expect(anchorTarget("#caf%C3%A9")).toBe("user-content-café")
   })
 
+  it("leaves malformed URLs and anchors as they are", () => {
+    // Backslashes count as slashes in http URLs, so this names an invalid host.
+    expect(resolveUrl("/\\[invalid", "image", README)).toBe("/\\[invalid")
+    expect(anchorTarget("#100%")).toBe("user-content-100%")
+  })
+
   it("uses the repository root for release notes", () => {
-    const bases = repositoryBaseUrls("https://github.com/acme/app", "acme/app")
+    const bases = repositoryBaseUrls({
+      html_url: "https://github.com/acme/app",
+      full_name: "acme/app",
+    })
     expect(resolveUrl("docs/x.md", "link", bases)).toBe(
       "https://github.com/acme/app/blob/HEAD/docs/x.md"
     )

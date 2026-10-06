@@ -10,12 +10,13 @@ import pytest
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from httpx import AsyncClient
 from sqlalchemy import create_engine
 from typer.testing import CliRunner
 
 from ghr import models  # noqa: F401  # registers all tables
 from ghr.cli import alembic_config, cli
-from ghr.db import Base
+from ghr.db import Base, utcnow
 from ghr.scheduler import SyncScheduler
 from ghr.services.sync import SyncResult
 from tests.conftest import make_settings, migrate
@@ -24,9 +25,11 @@ from tests.conftest import make_settings, migrate
 class FakeSync:
     def __init__(self, result: SyncResult) -> None:
         self.result = result
+        self.syncs = 0
         self.refreshes = 0
 
     async def sync(self) -> SyncResult:
+        self.syncs += 1
         return self.result
 
     async def refresh_recent(self, *, published_within: timedelta) -> int:
@@ -35,51 +38,70 @@ class FakeSync:
 
 
 class FakeSnoozes:
-    def __init__(self) -> None:
-        self.calls = 0
-
     async def wake_due(self) -> int:
-        self.calls += 1
         return 0
 
 
-def scheduler(result: SyncResult) -> tuple[SyncScheduler, FakeSync, FakeSnoozes]:
-    sync, snoozes = FakeSync(result), FakeSnoozes()
+def scheduler(result: SyncResult) -> tuple[SyncScheduler, FakeSync]:
+    sync = FakeSync(result)
     instance = SyncScheduler(
         sync,  # type: ignore[arg-type]
-        snoozes,  # type: ignore[arg-type]
+        FakeSnoozes(),  # type: ignore[arg-type]
         min_interval_seconds=60,
         refresh_interval_seconds=1800,
         refresh_window=timedelta(days=14),
     )
-    return instance, sync, snoozes
+    return instance, sync
 
 
 class TestScheduler:
-    async def test_waits_as_long_as_github_asks(self) -> None:
-        instance, sync, snoozes = scheduler(SyncResult(0, poll_interval_seconds=90))
+    async def test_waits_as_long_as_github_asks_and_refreshes_when_due(self) -> None:
+        instance, sync = scheduler(SyncResult(0, poll_interval_seconds=90))
 
-        assert await instance.run_once(refresh=True) == 90
-        assert (sync.refreshes, snoozes.calls) == (1, 1)
+        assert await instance.run_once() == 90
+        assert await instance.run_once() == 90
+        # Refreshes run on their own, much slower cadence.
+        assert sync.refreshes == 1
 
-    async def test_backs_off_and_skips_refresh_when_rate_limited(self) -> None:
-        instance, sync, _ = scheduler(
-            SyncResult(0, None, error="rate limited", retry_after_seconds=600)
-        )
+    async def test_backs_off_after_a_rate_limit(self) -> None:
+        instance, sync = scheduler(SyncResult(0, None, error="limited", retry_after_seconds=600))
 
-        assert await instance.run_once(refresh=True) == 600
+        assert await instance.run_once() == 600
+        assert instance.backing_off
+        assert instance.backoff_until is not None
+        assert 590 < (instance.backoff_until - utcnow()).total_seconds() <= 600
         assert sync.refreshes == 0
+        # A manual sync during the backoff waits for it to end.
+        assert instance.request_sync() is False
 
-    async def test_keeps_running_when_a_step_fails(self) -> None:
-        instance, sync, snoozes = scheduler(SyncResult(0, None))
+    async def test_requested_syncs_run_without_waiting_for_the_interval(self) -> None:
+        instance, sync = scheduler(SyncResult(0, poll_interval_seconds=3600))
+        instance.start()
+        try:
+            await asyncio.sleep(0.05)
+            assert instance.request_sync() is True
+            await asyncio.sleep(0.05)
+        finally:
+            await instance.stop()
+
+        assert sync.syncs == 2
+
+    async def test_sync_now_is_reported_as_running(self, user_client: AsyncClient) -> None:
+        response = await user_client.post("/api/sync")
+
+        assert response.status_code == 202
+        assert response.json()["in_progress"] is True
+        assert response.json()["rate_limited_until"] is None
+
+    async def test_keeps_running_when_a_sync_fails(self) -> None:
+        instance, sync = scheduler(SyncResult(0, None))
 
         async def broken() -> SyncResult:
             raise RuntimeError("boom")
 
         sync.sync = broken  # type: ignore[method-assign]
 
-        assert await instance.run_once(refresh=False) == 60
-        assert snoozes.calls == 1
+        assert await instance.run_once() == 60
 
 
 def test_backup_writes_a_copy_and_prunes_old_ones(

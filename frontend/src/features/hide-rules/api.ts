@@ -1,10 +1,10 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { releaseKeys } from "@/features/releases/api"
+import { releaseKeys } from "@/features/releases/query-keys"
 import { api } from "@/lib/api/client"
 import type { HideRule, HideRulePreview } from "@/lib/api/types"
 
-export const hideRuleKeys = {
+const hideRuleKeys = {
   all: ["hide-rules"] as const,
   list: () => [...hideRuleKeys.all, "list"] as const,
   preview: (repositoryId: number, pattern: string) =>
@@ -56,6 +56,7 @@ export function useDeleteHideRule() {
   const invalidate = useInvalidateAfterRuleChange()
   return useMutation({
     mutationFn: (ruleId: number) => api.delete(`/hide-rules/${ruleId}`),
+    meta: { errorMessage: "Couldn't remove the rule" },
     onSettled: invalidate,
   })
 }

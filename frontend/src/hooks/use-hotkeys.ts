@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
+
+import { useLatest } from "./use-latest"
 
 const OVERLAY_SELECTOR =
   "[role=dialog][data-state=open], [role=alertdialog], [role=menu], [role=listbox]"
 
-export type HotkeyMap = Partial<Record<string, (event: KeyboardEvent) => void>>
+type HotkeyMap = Partial<Record<string, () => void>>
 
 function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
@@ -24,25 +26,16 @@ function isTypingTarget(target: EventTarget | null): boolean {
 export function useHotkeys(
   hotkeys: HotkeyMap,
   {
-    enabled = true,
     repeatable = [],
   }: {
-    enabled?: boolean
     /** Keys that keep firing while held down; all others fire once per press. */
     repeatable?: readonly string[]
   } = {}
 ): void {
-  const repeatableRef = useRef(repeatable)
-  const latest = useRef(hotkeys)
+  const latest = useLatest(hotkeys)
+  const repeatableRef = useLatest(repeatable)
 
   useEffect(() => {
-    latest.current = hotkeys
-    repeatableRef.current = repeatable
-  })
-
-  useEffect(() => {
-    if (!enabled) return
-
     function onKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
       if (isTypingTarget(event.target)) return
@@ -52,11 +45,11 @@ export function useHotkeys(
       const handler = latest.current[event.key]
       if (handler) {
         event.preventDefault()
-        handler(event)
+        handler()
       }
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [enabled])
+  }, [latest, repeatableRef])
 }

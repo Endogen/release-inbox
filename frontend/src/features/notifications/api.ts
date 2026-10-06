@@ -15,5 +15,6 @@ export function useNotificationChannels() {
 export function useSendTestNotification() {
   return useMutation({
     mutationFn: () => api.post<NotificationTestResult>("/notifications/test"),
+    meta: { errorMessage: "Couldn't send a test notification" },
   })
 }

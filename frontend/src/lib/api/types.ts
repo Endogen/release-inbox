@@ -4,10 +4,13 @@ export type View = "inbox" | "snoozed" | "read" | "hidden"
 
 export const VIEWS: readonly View[] = ["inbox", "snoozed", "read", "hidden"]
 
+export function isView(value: unknown): value is View {
+  return VIEWS.includes(value as View)
+}
+
 export interface Repository {
   id: number
   full_name: string
-  owner_login: string
   owner_avatar_url: string
   html_url: string
   description: string | null
@@ -83,15 +86,19 @@ export interface SyncStatus {
   last_attempt_at: string | null
   last_error: string | null
   in_progress: boolean
+  /** GitHub asked not to be contacted before this time (rate limit). */
+  rate_limited_until: string | null
 }
 
 export interface CurrentUser {
   username: string
 }
 
+/** How pre-releases are treated: normally, in the inbox without notifications, or hidden. */
+export type PrereleaseMode = "show" | "mute" | "hide"
+
 export interface Preferences {
-  show_prereleases: boolean
-  notify_prereleases: boolean
+  prereleases: PrereleaseMode
 }
 
 export interface NotificationChannel {

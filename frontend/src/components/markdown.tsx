@@ -5,25 +5,19 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
 import rehypeSlug from "rehype-slug"
 import remarkGfm from "remark-gfm"
 
-import {
-  anchorTarget,
-  resolveSrcSet,
-  resolveUrl,
-  type MarkdownBaseUrls,
-} from "@/lib/markdown-urls"
-import { cn } from "@/lib/utils"
+import { anchorTarget, resolveSrcSet, resolveUrl, type MarkdownBaseUrls } from "@/lib/markdown-urls"
 
-interface MarkdownProps {
+export interface MarkdownProps {
   content: string
   baseUrls: MarkdownBaseUrls
-  className?: string
 }
 
-/** GitHub's sanitize schema, plus ``media`` so ``<picture>`` light/dark sources work. */
+/** GitHub's sanitize schema, plus what ``<picture>`` and high-density images need. */
 const SANITIZE_SCHEMA = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
+    img: [...(defaultSchema.attributes?.img ?? []), "srcSet"],
     source: [...(defaultSchema.attributes?.source ?? []), "media"],
   },
 }
@@ -39,8 +33,25 @@ function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
   target.scrollIntoView({ behavior: "smooth", block: "start" })
 }
 
-/** Renders GitHub-flavoured markdown (including sanitised inline HTML) from a repository. */
-export const Markdown = memo(function Markdown({ content, baseUrls, className }: MarkdownProps) {
+function sameProps(previous: MarkdownProps, next: MarkdownProps): boolean {
+  const [a, b] = [previous.baseUrls, next.baseUrls]
+  return (
+    previous.content === next.content &&
+    a.links === b.links &&
+    a.images === b.images &&
+    a.imageQuery === b.imageQuery
+  )
+}
+
+/**
+ * Renders GitHub-flavoured markdown (including sanitised inline HTML) from a repository.
+ * Base URLs are compared by value, so callers can pass a new object on every render.
+ */
+export const Markdown = memo(function Markdown({
+  content,
+  baseUrls: { links, images, imageQuery },
+}: MarkdownProps) {
+  const baseUrls = useMemo(() => ({ links, images, imageQuery }), [links, images, imageQuery])
   const components = useMemo<Components>(
     () => ({
       a: ({ node: _node, href, children, ...props }) =>
@@ -76,10 +87,9 @@ export const Markdown = memo(function Markdown({ content, baseUrls, className }:
 
   return (
     <div
-      className={cn(
-        "prose prose-sm prose-theme max-w-none break-words prose-headings:scroll-mt-4 prose-headings:font-semibold prose-headings:tracking-tight prose-a:font-medium prose-a:no-underline hover:prose-a:underline prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-img:inline prose-img:rounded-md",
-        className
-      )}
+      className={
+        "prose prose-sm prose-theme max-w-none break-words prose-headings:scroll-mt-4 prose-headings:font-semibold prose-headings:tracking-tight prose-a:font-medium prose-a:no-underline hover:prose-a:underline prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-img:inline prose-img:rounded-md"
+      }
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
@@ -92,4 +102,4 @@ export const Markdown = memo(function Markdown({ content, baseUrls, className }:
       </ReactMarkdown>
     </div>
   )
-})
+}, sameProps)

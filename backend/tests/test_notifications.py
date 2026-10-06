@@ -1,4 +1,8 @@
+"""Notification channels, what gets announced, and the push subscription API."""
+
 import json
+from collections.abc import AsyncIterator
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
@@ -15,7 +19,7 @@ from ghr.services.notifications import Notification, Notifier
 from ghr.services.notifications.ntfy import NtfyChannel
 from ghr.services.notifications.telegram import TELEGRAM_API_URL, TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
-from tests.conftest import SentNotifications
+from tests.conftest import SentNotifications, build_client, make_settings, migrate, sign_in
 from tests.github_fixtures import FakeRelease, mock_github
 
 NOTIFICATION = Notification(
@@ -33,7 +37,7 @@ class TestNtfy:
             route = router.post("https://ntfy.example/").mock(return_value=Response(200))
             channel = NtfyChannel(
                 http,
-                topic_url="https://ntfy.example/releases",
+                target=("https://ntfy.example/", "releases"),
                 token="secret",
                 public_url="https://releases.example/",
             )
@@ -54,18 +58,12 @@ class TestNtfy:
         async with httpx.AsyncClient() as http, respx.mock() as router:
             route = router.post("https://ntfy.sh/").mock(return_value=Response(500))
             channel = NtfyChannel(
-                http, topic_url="https://ntfy.sh/topic", token=None, public_url=None
+                http, target=("https://ntfy.sh/", "topic"), token=None, public_url=None
             )
 
             assert not await channel.send(NOTIFICATION)
 
         assert json.loads(route.calls.last.request.content)["click"] == NOTIFICATION.external_url
-
-    def test_requires_a_topic(self) -> None:
-        with pytest.raises(ValueError, match="topic"):
-            NtfyChannel(
-                httpx.AsyncClient(), topic_url="https://ntfy.sh/", token=None, public_url=None
-            )
 
 
 class TestTelegram:
@@ -154,18 +152,35 @@ class TestAnnouncementFilters:
         assert [notification.title for notification in sent] == ["2 new releases"]
         assert sent[0].body == "acme/tool, acme/app"
 
-    async def test_skips_prereleases_when_turned_off(
+    @pytest.mark.parametrize("mode", ["mute", "hide"])
+    async def test_skips_prereleases_unless_shown_normally(
+        self,
+        container: Container,
+        github_api: respx.MockRouter,
+        user_client: AsyncClient,
+        sent: SentNotifications,
+        mode: str,
+    ) -> None:
+        await user_client.patch("/api/preferences", json={"prereleases": mode})
+
+        await self.announce(container, github_api, user_client)
+
+        assert [notification.title for notification in sent] == ["acme/app"]
+
+    async def test_skips_muted_repositories(
         self,
         container: Container,
         github_api: respx.MockRouter,
         user_client: AsyncClient,
         sent: SentNotifications,
     ) -> None:
-        await user_client.patch("/api/preferences", json={"notify_prereleases": False})
+        mock_github(github_api, [self.STABLE, self.BETA])
+        await container.sync.sync()
+        await user_client.put("/api/repositories/10/notifications", json={"enabled": False})
 
-        await self.announce(container, github_api, user_client)
+        await container.notifier.announce_new_releases([1, 2])
 
-        assert [notification.title for notification in sent] == ["acme/app"]
+        assert [notification.title for notification in sent] == ["acme/tool"]
 
 
 async def test_channels_and_test_notification_endpoints(
@@ -199,3 +214,46 @@ async def test_web_push_removes_expired_subscriptions(
     async with container.session_factory() as session:
         endpoints = set(await session.scalars(select(PushSubscription.endpoint)))
     assert endpoints == {"https://push.example/alive"}
+
+
+@pytest.fixture
+async def push_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
+    """Signed-in client of an app with browser push configured."""
+    public_key, private_key = vapid_key_pair()
+    settings = make_settings(tmp_path, vapid_public_key=public_key, vapid_private_key=private_key)
+    await migrate(settings)
+    container = Container.build(settings)
+    async with build_client(settings, container) as client:
+        await sign_in(client)
+        yield client
+    await container.aclose()
+
+
+async def test_push_subscription_api(push_client: AsyncClient) -> None:
+    subscription = {
+        "endpoint": "https://push.example/device",
+        "keys": {"p256dh": "key", "auth": "secret"},
+    }
+
+    config = (await push_client.get("/api/push/config")).json()
+    subscribed = await push_client.post("/api/push/subscriptions", json=subscription)
+    resubscribed = await push_client.post("/api/push/subscriptions", json=subscription)
+    removed = await push_client.request(
+        "DELETE", "/api/push/subscriptions", json={"endpoint": subscription["endpoint"]}
+    )
+
+    assert config["enabled"] is True and config["public_key"]
+    assert [subscribed.status_code, resubscribed.status_code, removed.status_code] == [204] * 3
+
+
+async def test_push_subscriptions_need_server_keys(user_client: AsyncClient) -> None:
+    response = await user_client.post(
+        "/api/push/subscriptions",
+        json={"endpoint": "https://push.example/device", "keys": {"p256dh": "k", "auth": "a"}},
+    )
+
+    assert (await user_client.get("/api/push/config")).json() == {
+        "enabled": False,
+        "public_key": None,
+    }
+    assert response.status_code == 409

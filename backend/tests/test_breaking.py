@@ -1,3 +1,5 @@
+"""Breaking-change detection."""
+
 from dataclasses import dataclass
 
 import pytest
@@ -5,7 +7,6 @@ import pytest
 from ghr.services.breaking import (
     ComponentVersion,
     classify,
-    is_major_bump,
     mentions_breaking_changes,
     parse_version,
 )
@@ -18,13 +19,21 @@ class FakeRelease:
     breaking: bool = False
 
 
+def flags(*releases: FakeRelease) -> list[bool]:
+    classify(releases)
+    return [release.breaking for release in releases]
+
+
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
         ("## Breaking changes\n- Removed the v1 API", True),
+        ("### ⚠ BREAKING CHANGES", True),
         ("BREAKING CHANGE: config moved", True),
         ("* feat!: drop Node 18 by @someone", True),
         ("- fix(core)!: new defaults", True),
+        ("No breaking changes in this release.", False),
+        ("Upgrade without breaking changes.", False),
         ("Fixed a crash that was breaking the build in rare cases", False),
         ("Bug fixes and performance improvements", False),
         (None, False),
@@ -37,43 +46,49 @@ def test_detects_breaking_notes(body: str | None, expected: bool) -> None:
 @pytest.mark.parametrize(
     ("tag", "expected"),
     [
-        ("v1.2.3", ComponentVersion("", 1, 2)),
-        ("web@2.0.0", ComponentVersion("web@", 2, 0)),
-        ("@scope/pkg@10.1.0-rc.1", ComponentVersion("@scope/pkg@", 10, 1)),
-        ("release-2026.10", ComponentVersion("release-", 2026, 10)),
+        ("v1.2.3", ComponentVersion("", 1)),
+        ("web@2.0.0", ComponentVersion("web@", 2)),
+        ("@scope/pkg@10.1.0-rc.1", ComponentVersion("@scope/pkg@", 10)),
+        ("release-2026.10", ComponentVersion("release-", 2026)),
         ("v3060", None),
         ("nightly", None),
     ],
 )
-def test_parses_component_and_version(tag: str, expected: ComponentVersion | None) -> None:
+def test_parses_component_and_major(tag: str, expected: ComponentVersion | None) -> None:
     assert parse_version(tag) == expected
 
 
-def test_major_bump_requires_same_component_and_stable_major() -> None:
-    assert is_major_bump(ComponentVersion("", 2, 0), ComponentVersion("", 1, 9))
-    assert not is_major_bump(ComponentVersion("", 0, 9), ComponentVersion("", 0, 8))
-    assert not is_major_bump(ComponentVersion("a@", 2, 0), ComponentVersion("b@", 1, 0))
-    assert not is_major_bump(ComponentVersion("", 2, 0), None)
-    # Calendar versions roll over every year; that's not a breaking change.
-    assert not is_major_bump(ComponentVersion("", 2027, 1), ComponentVersion("", 2026, 12))
+def test_new_major_versions_per_component() -> None:
+    assert flags(
+        FakeRelease("web@1.0.0"),
+        FakeRelease("api@1.0.0"),
+        FakeRelease("web@2.0.0"),
+        FakeRelease("api@1.1.0"),
+    ) == [False, False, True, False]
 
 
-def test_build_numbers_are_not_versions() -> None:
-    releases = [FakeRelease("v2975"), FakeRelease("v3037"), FakeRelease("v3060")]
-
-    classify(releases)
-
-    assert not any(release.breaking for release in releases)
-
-
-def test_classify_tracks_components_in_order() -> None:
-    releases = [
-        FakeRelease("v1.0.0"),
-        FakeRelease("v1.1.0"),
-        FakeRelease("v2.0.0"),
-        FakeRelease("v2.1.0", body="BREAKING: dropped the old flag"),
+def test_backports_are_not_new_majors() -> None:
+    assert flags(FakeRelease("v2.0.0"), FakeRelease("v1.9.1"), FakeRelease("v2.0.1")) == [
+        False,
+        False,
+        False,
     ]
 
-    classify(releases)
 
-    assert [release.breaking for release in releases] == [False, False, True, True]
+@pytest.mark.parametrize(
+    "tags",
+    [
+        ("v0.9.0", "v0.10.0"),  # 0.x makes no compatibility promise
+        ("v2975", "v3037", "v3060"),  # build numbers
+        ("2026.12.1", "2027.1.0"),  # calendar versions roll over every year
+    ],
+)
+def test_ignores_non_semantic_versions(tags: tuple[str, ...]) -> None:
+    assert not any(flags(*(FakeRelease(tag) for tag in tags)))
+
+
+def test_notes_flag_any_release() -> None:
+    assert flags(FakeRelease("v1.0.0"), FakeRelease("v1.1.0", body="BREAKING: dropped a flag")) == [
+        False,
+        True,
+    ]

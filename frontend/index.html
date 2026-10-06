@@ -12,11 +12,12 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <title>Releases</title>
     <script>
-      // Apply the saved theme before first paint to avoid a flash (see src/lib/theme.ts).
+      // Apply the saved theme before first paint to avoid a flash (see src/features/theme).
       ;(function () {
         var theme = "dark"
         try {
-          theme = localStorage.getItem("ghr-theme") || theme
+          var stored = localStorage.getItem("ghr-theme")
+          if (stored === "light" || stored === "dark" || stored === "system") theme = stored
         } catch (error) {}
         var dark =
           theme === "dark" ||

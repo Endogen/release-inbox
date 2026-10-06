@@ -1,15 +1,16 @@
 import { useCallback } from "react"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 
-import { VIEWS, type View } from "@/lib/api/types"
+import { isView, type View } from "@/lib/api/types"
+
+/** The path of a view, keeping the search. */
+export function viewPath(view: View, search: string): string {
+  return search ? `/${view}?${new URLSearchParams({ q: search })}` : `/${view}`
+}
 
 interface RouteState {
   /** The release was opened from the list with a new history entry (mobile layout). */
   openedFromList?: boolean
-}
-
-function isView(value: string | undefined): value is View {
-  return VIEWS.includes(value as View)
 }
 
 function parseId(value: string | null): number | null {
@@ -64,13 +65,7 @@ export function useInboxRoute() {
 
   const setSearch = useCallback((value: string) => updateParam("q", value || null), [updateParam])
 
-  const setView = useCallback(
-    (next: View) => {
-      const query = search ? `?${new URLSearchParams({ q: search })}` : ""
-      navigate(`/${next}${query}`)
-    },
-    [navigate, search]
-  )
+  const setView = useCallback((next: View) => navigate(viewPath(next, search)), [navigate, search])
 
   return { view, search, releaseId, selectRelease, closeRelease, setSearch, setView }
 }

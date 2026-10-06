@@ -1,16 +1,20 @@
-"""Background loop: polls notifications at the interval GitHub asks for, ends snoozes and
-periodically refreshes recent releases."""
+"""Background loops: notification polling at the interval GitHub asks for (with backoff and
+on-demand syncs), periodic refreshes of recent releases, and the end of snoozes."""
 
 import asyncio
 import contextlib
 import logging
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+from ghr.db import utcnow
 from ghr.services.snooze import SnoozeWaker
 from ghr.services.sync import NotificationSyncService
 
 logger = logging.getLogger(__name__)
+
+#: How often expired snoozes are checked, independent of polling and rate limits.
+SNOOZE_CHECK_SECONDS = 60
 
 
 class SyncScheduler:
@@ -28,47 +32,79 @@ class SyncScheduler:
         self._min_interval = min_interval_seconds
         self._refresh_interval = refresh_interval_seconds
         self._refresh_window = refresh_window
-        self._task: asyncio.Task[None] | None = None
+        self._wake = asyncio.Event()
+        #: Monotonic time before which GitHub asked not to be contacted.
+        self._backoff_until = 0.0
+        self._next_refresh = 0.0
+        self._tasks: list[asyncio.Task[None]] = []
 
     def start(self) -> None:
-        if self._task is None:
-            self._task = asyncio.create_task(self._run(), name="notification-sync")
+        if not self._tasks:
+            self._next_refresh = time.monotonic() + self._min_interval
+            self._tasks = [
+                asyncio.create_task(self._poll_loop(), name="notification-sync"),
+                asyncio.create_task(self._snooze_loop(), name="snooze-wake-up"),
+            ]
 
     async def stop(self) -> None:
-        if self._task is None:
-            return
-        self._task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await self._task
-        self._task = None
+        for task in self._tasks:
+            task.cancel()
+        for task in self._tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        self._tasks = []
 
-    async def run_once(self, *, refresh: bool) -> int:
-        """One iteration of the loop. Returns the delay before the next one, in seconds."""
-        delay = self._min_interval
-        rate_limited = False
-        # Each step is isolated: one failing must not stop the others or future iterations.
+    @property
+    def backing_off(self) -> bool:
+        return time.monotonic() < self._backoff_until
+
+    @property
+    def backoff_until(self) -> datetime | None:
+        """When GitHub's requested wait ends, if it hasn't yet."""
+        remaining = self._backoff_until - time.monotonic()
+        return utcnow() + timedelta(seconds=remaining) if remaining > 0 else None
+
+    def request_sync(self) -> bool:
+        """Sync as soon as possible. Returns False if GitHub asked to wait (the sync then runs
+        when the wait is over)."""
+        self._wake.set()
+        return not self.backing_off
+
+    async def run_once(self) -> float:
+        """Sync, and refresh recent releases when due. Returns seconds until the next sync."""
+        delay: float = self._min_interval
         try:
             result = await self._sync.sync()
-            delay = max(delay, result.poll_interval_seconds or 0, result.retry_after_seconds or 0)
-            rate_limited = result.retry_after_seconds is not None
+            delay = max(delay, result.poll_interval_seconds or 0)
+            if result.retry_after_seconds is not None:
+                delay = max(delay, result.retry_after_seconds)
+                self._backoff_until = time.monotonic() + result.retry_after_seconds
         except Exception:
+            # Keep polling: one failed run must not stop future synchronisation.
             logger.exception("Unexpected error during notification sync")
-        try:
-            await self._snoozes.wake_due()
-        except Exception:
-            logger.exception("Unexpected error while ending snoozes")
-        if refresh and not rate_limited:
+        if time.monotonic() >= self._next_refresh and not self.backing_off:
+            self._next_refresh = time.monotonic() + self._refresh_interval
             try:
                 await self._sync.refresh_recent(published_within=self._refresh_window)
             except Exception:
                 logger.exception("Unexpected error while refreshing releases")
         return delay
 
-    async def _run(self) -> None:
-        next_refresh = time.monotonic() + self._min_interval
+    async def _poll_loop(self) -> None:
         while True:
-            refresh = time.monotonic() >= next_refresh
-            delay = await self.run_once(refresh=refresh)
-            if refresh:
-                next_refresh = time.monotonic() + self._refresh_interval
-            await asyncio.sleep(delay)
+            delay = await self.run_once()
+            self._wake.clear()
+            # Sleep until the next poll, or until a sync is requested; never before a backoff
+            # GitHub asked for has passed.
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(self._wake.wait(), timeout=delay)
+            if (wait := self._backoff_until - time.monotonic()) > 0:
+                await asyncio.sleep(wait)
+
+    async def _snooze_loop(self) -> None:
+        while True:
+            try:
+                await self._snoozes.wake_due()
+            except Exception:
+                logger.exception("Unexpected error while ending snoozes")
+            await asyncio.sleep(SNOOZE_CHECK_SECONDS)

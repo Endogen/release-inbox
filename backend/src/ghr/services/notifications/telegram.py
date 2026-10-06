@@ -26,7 +26,7 @@ class TelegramChannel:
         self._http = http
         self._bot_token = bot_token
         self._chat_id = chat_id
-        self._public_url = public_url.rstrip("/") if public_url else None
+        self._public_url = public_url
 
     @property
     def configured(self) -> bool:
@@ -35,11 +35,7 @@ class TelegramChannel:
     async def send(self, notification: Notification) -> bool:
         if not self.configured:
             return False
-        link = (
-            f"{self._public_url}{notification.path}"
-            if self._public_url
-            else notification.external_url
-        )
+        link = notification.link(self._public_url)
         text = (
             f"<b>{html.escape(notification.title)}</b>\n"
             f"{html.escape(notification.body)}\n"

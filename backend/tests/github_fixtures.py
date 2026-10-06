@@ -28,7 +28,13 @@ class FakeRelease:
 
     @property
     def api_url(self) -> str:
+        """URL in the notification, by repository name."""
         return f"{GITHUB_API}/repos/{self.full_name}/releases/{self.id}"
+
+    @property
+    def refresh_url(self) -> str:
+        """URL the refresh uses, by repository id."""
+        return f"{GITHUB_API}/repositories/{self.repo_id}/releases/{self.id}"
 
     def notification(self) -> dict[str, Any]:
         owner = self.full_name.split("/")[0]

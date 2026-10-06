@@ -57,6 +57,5 @@ class GitHubRelease(_GitHubModel):
 
 class GitHubReadme(_GitHubModel):
     content: str
-    encoding: str
     html_url: str
     download_url: str

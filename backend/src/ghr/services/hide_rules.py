@@ -1,6 +1,6 @@
 """Hide rules: per-repository glob patterns matched against release names and tags."""
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -8,10 +8,23 @@ from sqlalchemy.orm import selectinload
 from ghr.errors import ConflictError, NotFoundError
 from ghr.events import Event, EventBroker
 from ghr.models import HideRule, Release, Repository
-from ghr.schemas import HideRuleOut, HideRulePreview, ReleaseRef, RepositoryOut
+from ghr.schemas import HideRuleOut, HideRulePreview, RepositoryOut
 from ghr.services.filters import is_hidden, matches_pattern
+from ghr.services.preferences import load_preferences
+from ghr.services.releases import release_ref
 
 PREVIEW_LIMIT = 10
+
+
+def _match_count(
+    repository_id: ColumnElement[int] | int, pattern: ColumnElement[str] | str
+) -> ColumnElement[int]:
+    """Number of releases of the repository that the pattern matches."""
+    return (
+        select(func.count(Release.id))
+        .where(Release.repository_id == repository_id, matches_pattern(pattern))
+        .scalar_subquery()
+    )
 
 
 class HideRuleService:
@@ -19,18 +32,9 @@ class HideRuleService:
         self._session = session
         self._broker = broker
 
-    async def list(self) -> list[HideRuleOut]:
-        match_count = (
-            select(func.count(Release.id))
-            .where(
-                Release.repository_id == HideRule.repository_id,
-                matches_pattern(HideRule.pattern),
-            )
-            .correlate(HideRule)
-            .scalar_subquery()
-        )
+    async def list_all(self) -> list[HideRuleOut]:
         rows = await self._session.execute(
-            select(HideRule, match_count)
+            select(HideRule, _match_count(HideRule.repository_id, HideRule.pattern))
             .options(selectinload(HideRule.repository))
             .join(HideRule.repository)
             .order_by(Repository.full_name, HideRule.pattern)
@@ -38,10 +42,7 @@ class HideRuleService:
         return [_to_out(rule, count) for rule, count in rows]
 
     async def create(self, repository_id: int, pattern: str) -> HideRuleOut:
-        repository = await self._session.get(Repository, repository_id)
-        if repository is None:
-            raise NotFoundError("Repository", repository_id)
-
+        repository = await self._require_repository(repository_id)
         rule = HideRule(repository=repository, pattern=pattern)
         self._session.add(rule)
         try:
@@ -51,7 +52,8 @@ class HideRuleService:
             raise ConflictError(f"A rule for {pattern!r} already exists") from error
 
         self._broker.publish(Event("releases-changed"))
-        return await self._to_out(rule)
+        count = await self._session.scalar(select(_match_count(repository_id, pattern)))
+        return _to_out(rule, count or 0)
 
     async def delete(self, rule_id: int) -> None:
         rule = await self._session.get(HideRule, rule_id)
@@ -63,34 +65,23 @@ class HideRuleService:
 
     async def preview(self, repository_id: int, pattern: str) -> HideRulePreview:
         """Releases of the repository a rule with ``pattern`` would hide."""
-        condition = (Release.repository_id == repository_id, matches_pattern(pattern))
-        total = await self._session.scalar(select(func.count()).where(*condition))
+        await self._require_repository(repository_id)
+        preferences = await load_preferences(self._session)
+        total = await self._session.scalar(select(_match_count(repository_id, pattern)))
         rows = await self._session.execute(
-            select(Release, is_hidden().label("is_hidden"))
-            .where(*condition)
+            select(Release, is_hidden(preferences.prereleases).label("is_hidden"))
+            .where(Release.repository_id == repository_id, matches_pattern(pattern))
             .order_by(Release.published_at.desc())
             .limit(PREVIEW_LIMIT)
         )
-        matches = [
-            ReleaseRef(
-                id=release.id,
-                tag_name=release.tag_name,
-                name=release.name,
-                published_at=release.published_at,
-                read_at=release.read_at,
-                is_hidden=hidden,
-            )
-            for release, hidden in rows
-        ]
+        matches = [release_ref(release, hidden) for release, hidden in rows]
         return HideRulePreview(total=total or 0, matches=matches)
 
-    async def _to_out(self, rule: HideRule) -> HideRuleOut:
-        match_count = await self._session.scalar(
-            select(func.count()).where(
-                Release.repository_id == rule.repository_id, matches_pattern(rule.pattern)
-            )
-        )
-        return _to_out(rule, match_count or 0)
+    async def _require_repository(self, repository_id: int) -> Repository:
+        repository = await self._session.get(Repository, repository_id)
+        if repository is None:
+            raise NotFoundError("Repository", repository_id)
+        return repository
 
 
 def _to_out(rule: HideRule, match_count: int) -> HideRuleOut:

@@ -1,7 +1,6 @@
 """ntfy (https://ntfy.sh or self-hosted): push to the ntfy app without installing anything else."""
 
 import logging
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -17,14 +16,15 @@ class NtfyChannel:
         self,
         http: httpx.AsyncClient,
         *,
-        topic_url: str | None,
+        target: tuple[str, str] | None,
         token: str | None,
         public_url: str | None,
     ) -> None:
+        """``target`` is the (server URL, topic) pair, see ``Settings.ntfy_target``."""
         self._http = http
-        self._target = _split_topic_url(topic_url) if topic_url else None
+        self._target = target
         self._token = token
-        self._public_url = public_url.rstrip("/") if public_url else None
+        self._public_url = public_url
 
     @property
     def configured(self) -> bool:
@@ -34,11 +34,6 @@ class NtfyChannel:
         if self._target is None:
             return False
         server, topic = self._target
-        click = (
-            f"{self._public_url}{notification.path}"
-            if self._public_url
-            else notification.external_url
-        )
         headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
         # JSON publishing keeps non-ASCII titles intact (HTTP headers can't carry them).
         try:
@@ -49,7 +44,7 @@ class NtfyChannel:
                     "topic": topic,
                     "title": notification.title,
                     "message": notification.body,
-                    "click": click,
+                    "click": notification.link(self._public_url),
                     "tags": ["package"],
                 },
             )
@@ -58,14 +53,3 @@ class NtfyChannel:
             logger.warning("ntfy notification failed: %s", error)
             return False
         return True
-
-
-def _split_topic_url(topic_url: str) -> tuple[str, str]:
-    """``https://ntfy.sh/releases`` → (``https://ntfy.sh/``, ``releases``)."""
-    parts = urlsplit(topic_url)
-    path, _, topic = parts.path.rstrip("/").rpartition("/")
-    if not topic:
-        raise ValueError(
-            f"ntfy URL must include the topic, e.g. https://ntfy.sh/topic: {topic_url}"
-        )
-    return urlunsplit((parts.scheme, parts.netloc, f"{path}/", "", "")), topic

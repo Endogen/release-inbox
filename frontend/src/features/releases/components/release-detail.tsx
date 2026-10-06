@@ -15,7 +15,7 @@ import {
 import { useEffect, useRef, type ReactNode } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
-import { RepoAvatar, UserAvatar } from "@/components/repo-avatar"
+import { RepoAvatar, UserAvatar } from "@/components/avatars"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
@@ -24,14 +24,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useNow } from "@/hooks/use-now"
 import type { Release } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
-import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
+import { canSnooze, viewOf } from "../release-view"
 import { ReleaseContent, type ContentTab } from "./release-content"
 import { ReleaseVersionSelect } from "./release-version-select"
 import { SnoozeMenu } from "./snooze-menu"
 
-export interface ReleaseDetailActions {
+interface ReleaseDetailActions {
   onToggleNotifications: () => void
   onMarkRead: () => void
   onMarkUnread: () => void
@@ -42,7 +42,7 @@ export interface ReleaseDetailActions {
 }
 
 /** Actions waiting for their undo window to pass. */
-export interface PendingActions {
+interface PendingActions {
   markRead: boolean
   unsubscribe: boolean
 }
@@ -50,8 +50,8 @@ export interface PendingActions {
 interface ReleaseDetailProps {
   release: Release
   body: string | null | undefined
-  /** Unread inbox releases of the repository (drives "What's new"). */
-  unreadCount: number
+  /** Unread releases of the entry, shown under "What's new"; 0 hides the tab. */
+  whatsNewCount: number
   contentTab: ContentTab
   onContentTabChange: (tab: ContentTab) => void
   onSelectRelease: (releaseId: number) => void
@@ -67,7 +67,7 @@ interface ReleaseDetailProps {
 export function ReleaseDetail({
   release,
   body,
-  unreadCount,
+  whatsNewCount,
   contentTab,
   onContentTabChange,
   onSelectRelease,
@@ -86,8 +86,7 @@ export function ReleaseDetail({
   const { repository } = release
   const title = releaseTitle(release)
   const now = useNow()
-  const snoozed =
-    release.snoozed_until !== null && new Date(release.snoozed_until).getTime() > now
+  const view = viewOf(release, now)
 
   return (
     <article
@@ -107,10 +106,15 @@ export function ReleaseDetail({
               href={repository.html_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 truncate text-sm font-medium hover:underline"
+              className="flex items-center gap-1.5 text-sm font-medium hover:underline"
             >
-              {repository.full_name}
-              {repository.private && <LockIcon className="size-3.5 text-muted-foreground" />}
+              <span className="truncate">{repository.full_name}</span>
+              {repository.private && (
+                <LockIcon
+                  aria-label="Private"
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                />
+              )}
             </a>
             {repository.description && (
               <p className="truncate text-xs text-muted-foreground" title={repository.description}>
@@ -156,7 +160,7 @@ export function ReleaseDetail({
               </Tooltip>
             )}
             {release.prerelease && <Badge variant="secondary">Pre-release</Badge>}
-            {snoozed && release.snoozed_until && (
+            {view === "snoozed" && release.snoozed_until && (
               <Badge variant="secondary">
                 <AlarmClockIcon data-icon="inline-start" />
                 Snoozed until {formatAbsolute(release.snoozed_until)}
@@ -193,7 +197,7 @@ export function ReleaseDetail({
         <div className="flex flex-wrap items-center gap-2">
           {release.read_at === null ? (
             <ActionButton hotkey="e" label="Mark this and older releases as read">
-              <Button size="sm" onClick={actions.onMarkRead} disabled={pending.markRead}>
+              <Button size="sm" onClick={actions.onMarkRead} aria-busy={pending.markRead}>
                 {pending.markRead ? (
                   <Spinner data-icon="inline-start" />
                 ) : (
@@ -210,8 +214,8 @@ export function ReleaseDetail({
               </Button>
             </ActionButton>
           )}
-          {release.read_at === null &&
-            (snoozed ? (
+          {canSnooze(release, now) &&
+            (view === "snoozed" ? (
               <ActionButton label="Bring it back to the inbox now">
                 <Button size="sm" variant="outline" onClick={actions.onUnsnooze}>
                   <AlarmClockOffIcon data-icon="inline-start" />
@@ -242,7 +246,7 @@ export function ReleaseDetail({
                 size="sm"
                 variant="outline"
                 onClick={actions.onUnsubscribe}
-                disabled={pending.unsubscribe}
+                aria-busy={pending.unsubscribe}
               >
                 {pending.unsubscribe ? (
                   <Spinner data-icon="inline-start" />
@@ -278,7 +282,7 @@ export function ReleaseDetail({
       <ReleaseContent
         release={release}
         body={body}
-        unreadCount={unreadCount}
+        whatsNewCount={whatsNewCount}
         tab={contentTab}
         onTabChange={onContentTabChange}
       />
@@ -302,7 +306,6 @@ function NotificationsToggle({ muted, onToggle }: { muted: boolean; onToggle: ()
         aria-label="Notifications for this repository"
         aria-pressed={!muted}
         onClick={onToggle}
-        className={cn(muted && "text-muted-foreground")}
       >
         {muted ? <BellOffIcon /> : <BellIcon />}
       </Button>

@@ -1,4 +1,5 @@
 import { api } from "@/lib/api/client"
+import { decodeBase64Url } from "@/lib/base64-url"
 
 const SERVICE_WORKER_URL = "/sw.js"
 
@@ -11,11 +12,12 @@ export function getPushSupport(): PushSupport {
   return supported ? "supported" : "unsupported"
 }
 
-export function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
+function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.register(SERVICE_WORKER_URL)
 }
 
 export async function getActiveSubscription(): Promise<PushSubscription | null> {
+  if (getPushSupport() !== "supported") return null
   const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_URL)
   return (await registration?.pushManager.getSubscription()) ?? null
 }
@@ -43,16 +45,4 @@ export async function unsubscribeFromPush(): Promise<void> {
   if (!subscription) return
   await api.delete("/push/subscriptions", { endpoint: subscription.endpoint })
   await subscription.unsubscribe()
-}
-
-function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
-  const base64 = (value + "=".repeat((4 - (value.length % 4)) % 4))
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-  const binary = atob(base64)
-  const bytes = new Uint8Array(new ArrayBuffer(binary.length))
-  for (let index = 0; index < binary.length; index++) {
-    bytes[index] = binary.charCodeAt(index)
-  }
-  return bytes
 }

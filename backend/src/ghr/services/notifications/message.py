@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+GITHUB_NOTIFICATIONS_URL = "https://github.com/notifications"
+
 
 @dataclass(frozen=True, slots=True)
 class Notification:
@@ -14,6 +16,10 @@ class Notification:
     external_url: str
     #: Notifications with the same tag replace each other on the device.
     tag: str
+
+    def link(self, public_url: str | None) -> str:
+        """Into the app if its address is known, else to GitHub."""
+        return f"{public_url.rstrip('/')}{self.path}" if public_url else self.external_url
 
 
 class NotificationChannel(Protocol):

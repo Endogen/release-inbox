@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { useDeferredActionQueue } from "@/features/deferred-actions/context"
+import { unsubscribeFromPush } from "@/features/notifications/push"
+import { useDeferredActionQueue } from "@/features/releases/deferred-actions/context"
 import { api, ApiError } from "@/lib/api/client"
 import type { CurrentUser } from "@/lib/api/types"
 
@@ -38,10 +39,13 @@ export function useLogout() {
   const pendingActions = useDeferredActionQueue()
   return useMutation({
     mutationFn: async () => {
-      // Send undoable actions that are still waiting while the session is valid.
+      // Send undoable actions that are still waiting while the session is valid, and stop
+      // push notifications to this device: they would show releases after signing out.
       await pendingActions.flush()
+      await unsubscribeFromPush()
       await api.post("/auth/logout")
     },
+    meta: { errorMessage: "Couldn't sign out" },
     onSuccess: () => {
       queryClient.clear()
       queryClient.setQueryData(authKeys.me, null)

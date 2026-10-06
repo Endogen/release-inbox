@@ -22,12 +22,13 @@ export function LoginPage() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
 
-  const error =
-    login.error instanceof ApiError && login.error.isUnauthorized
+  const error = !login.error
+    ? null
+    : login.error instanceof ApiError && login.error.isUnauthorized
       ? "That username and password don't match."
-      : login.error
-        ? "Couldn't reach the server. Try again."
-        : null
+      : login.error instanceof ApiError && login.error.status < 500
+        ? login.error.message
+        : "Couldn't reach the server. Try again."
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

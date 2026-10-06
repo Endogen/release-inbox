@@ -1,4 +1,7 @@
-"""Fire-and-forget work that must not delay a request or the sync, but is awaited on shutdown."""
+"""Fire-and-forget work that must not delay a request or the sync, but is awaited on shutdown.
+
+(Not to be confused with FastAPI's ``BackgroundTasks``, which run after a single response.)
+"""
 
 import asyncio
 import logging
@@ -8,7 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-class BackgroundTasks:
+class TaskSupervisor:
     def __init__(self) -> None:
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -18,7 +21,7 @@ class BackgroundTasks:
         task.add_done_callback(self._tasks.discard)
 
     async def wait(self) -> None:
-        """Wait until all currently running tasks are done (used by tests and shutdown)."""
+        """Wait until all currently running tasks are done."""
         while self._tasks:
             await asyncio.gather(*self._tasks)
 

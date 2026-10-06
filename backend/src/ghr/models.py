@@ -5,6 +5,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Enum,
     ForeignKey,
     Index,
     Integer,
@@ -15,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ghr.db import Base, UtcDateTime, utcnow
+from ghr.domain import PrereleaseMode
 
 
 class Repository(Base):
@@ -22,7 +24,6 @@ class Repository(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
     full_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    owner_login: Mapped[str] = mapped_column(String(255))
     owner_avatar_url: Mapped[str] = mapped_column(String(1024))
     html_url: Mapped[str] = mapped_column(String(1024))
     description: Mapped[str | None] = mapped_column(Text)
@@ -48,10 +49,9 @@ class Release(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=False)
-    repository_id: Mapped[int] = mapped_column(
-        ForeignKey("repositories.id", ondelete="CASCADE"), index=True
-    )
-    thread_id: Mapped[str] = mapped_column(String(64), index=True)
+    # Indexed through ``ix_releases_repository_*`` (leading column).
+    repository_id: Mapped[int] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"))
+    thread_id: Mapped[str] = mapped_column(String(64))
     tag_name: Mapped[str] = mapped_column(String(255))
     name: Mapped[str | None] = mapped_column(String(1024))
     body: Mapped[str | None] = mapped_column(Text)
@@ -64,10 +64,9 @@ class Release(Base):
     #: Hidden from the inbox until this time.
     snoozed_until: Mapped[datetime | None] = mapped_column(UtcDateTime, index=True)
     #: The notes announce breaking changes, or the version is a new major version.
-    breaking: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    breaking: Mapped[bool] = mapped_column(Boolean, default=False)
     #: ETag of the last fetch, so refreshes are conditional requests.
     etag: Mapped[str | None] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
     repository: Mapped[Repository] = relationship(back_populates="releases")
 
@@ -79,9 +78,8 @@ class HideRule(Base):
     __table_args__ = (UniqueConstraint("repository_id", "pattern"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    repository_id: Mapped[int] = mapped_column(
-        ForeignKey("repositories.id", ondelete="CASCADE"), index=True
-    )
+    # Indexed through the unique constraint (leading column).
+    repository_id: Mapped[int] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"))
     pattern: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
@@ -110,7 +108,6 @@ class PushSubscription(Base):
     endpoint: Mapped[str] = mapped_column(String(2048), unique=True)
     p256dh: Mapped[str] = mapped_column(String(255))
     auth: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
 class Preferences(Base):
@@ -119,8 +116,10 @@ class Preferences(Base):
     __tablename__ = "preferences"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    show_prereleases: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
-    notify_prereleases: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    prereleases: Mapped[PrereleaseMode] = mapped_column(
+        Enum(PrereleaseMode, native_enum=False, length=8, validate_strings=True),
+        default=PrereleaseMode.SHOW,
+    )
 
 
 class Summary(Base):
@@ -132,7 +131,6 @@ class Summary(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     content: Mapped[str] = mapped_column(Text)
     model: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
 
 class SyncState(Base):
@@ -145,4 +143,3 @@ class SyncState(Base):
     last_synced_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     last_attempt_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     last_error: Mapped[str | None] = mapped_column(Text)
-    poll_interval_seconds: Mapped[int | None] = mapped_column(Integer)

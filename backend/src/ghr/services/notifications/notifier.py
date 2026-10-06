@@ -8,15 +8,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import contains_eager
 
+from ghr.domain import PrereleaseMode
 from ghr.models import Release, Repository
 from ghr.services.filters import is_hidden
-from ghr.services.notifications.message import Notification, NotificationChannel
+from ghr.services.notifications.message import (
+    GITHUB_NOTIFICATIONS_URL,
+    Notification,
+    NotificationChannel,
+)
 from ghr.services.preferences import load_preferences
 
 logger = logging.getLogger(__name__)
 
 _MAX_NAMES_IN_SUMMARY = 3
-GITHUB_NOTIFICATIONS_URL = "https://github.com/notifications"
 
 
 class Notifier:
@@ -47,11 +51,23 @@ class Notifier:
                 outcome[channel.name] = result
         return outcome
 
+    async def send_test(self) -> dict[str, bool]:
+        return await self.send(
+            Notification(
+                title="Notifications are on",
+                body="You'll be notified here when a new release is published.",
+                path="/inbox",
+                external_url=GITHUB_NOTIFICATIONS_URL,
+                tag="test",
+            )
+        )
+
     async def announce_new_releases(self, release_ids: Sequence[int]) -> None:
-        """Announce new releases, except hidden ones, those of muted repositories and, if the
-        user turned them off, pre-releases."""
+        """Announce new releases, except hidden ones, those of muted repositories and
+        pre-releases unless the user shows them normally."""
         async with self._session_factory() as session:
             preferences = await load_preferences(session)
+            mode = preferences.prereleases
             statement = (
                 select(Release)
                 .join(Release.repository)
@@ -59,11 +75,11 @@ class Notifier:
                 .where(
                     Release.id.in_(release_ids),
                     Repository.notifications_muted_at.is_(None),
-                    ~is_hidden(),
+                    ~is_hidden(mode),
                 )
                 .order_by(Release.published_at.desc())
             )
-            if not preferences.notify_prereleases:
+            if mode is not PrereleaseMode.SHOW:
                 statement = statement.where(Release.prerelease.is_(False))
             releases = list(await session.scalars(statement))
         if releases:

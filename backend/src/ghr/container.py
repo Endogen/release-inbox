@@ -20,7 +20,7 @@ from ghr.services.notifications.web_push import WebPushChannel
 from ghr.services.snooze import SnoozeWaker
 from ghr.services.summaries import ClaudeSummarizer, Summarizer
 from ghr.services.sync import NotificationSyncService
-from ghr.tasks import BackgroundTasks
+from ghr.tasks import TaskSupervisor
 
 _OUTBOUND_TIMEOUT_SECONDS = 10.0
 
@@ -33,7 +33,7 @@ class Container:
     github: GitHubClient
     outbound_http: httpx.AsyncClient
     broker: EventBroker
-    tasks: BackgroundTasks
+    tasks: TaskSupervisor
     web_push: WebPushChannel
     notifier: Notifier
     sync: NotificationSyncService
@@ -43,13 +43,14 @@ class Container:
     login_throttle: LoginThrottle
 
     @classmethod
-    def build(cls, settings: Settings) -> "Container":
+    def build(cls, settings: Settings, *, summarizer: Summarizer | None = None) -> "Container":
+        """Wire everything from the settings; ``summarizer`` replaces the Claude one (tests)."""
         engine = create_engine(settings.database_url)
         session_factory = create_session_factory(engine)
         github = GitHubClient(settings.github_token.get_secret_value(), settings.github_api_url)
         outbound_http = httpx.AsyncClient(timeout=_OUTBOUND_TIMEOUT_SECONDS)
         broker = EventBroker()
-        tasks = BackgroundTasks()
+        tasks = TaskSupervisor()
 
         web_push = WebPushChannel(
             session_factory,
@@ -62,7 +63,7 @@ class Container:
                 web_push,
                 NtfyChannel(
                     outbound_http,
-                    topic_url=settings.ntfy_url,
+                    target=settings.ntfy_target,
                     token=_secret(settings.ntfy_token),
                     public_url=settings.public_url,
                 ),
@@ -83,10 +84,8 @@ class Container:
             refresh_interval_seconds=settings.release_refresh_interval_seconds,
             refresh_window=timedelta(days=settings.release_refresh_days),
         )
-        api_key = _secret(settings.anthropic_api_key)
-        summarizer = (
-            ClaudeSummarizer(api_key=api_key, model=settings.anthropic_model) if api_key else None
-        )
+        if summarizer is None and (api_key := _secret(settings.anthropic_api_key)):
+            summarizer = ClaudeSummarizer(api_key=api_key, model=settings.anthropic_model)
         return cls(
             settings=settings,
             engine=engine,

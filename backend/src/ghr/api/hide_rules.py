@@ -10,7 +10,7 @@ router = APIRouter(prefix="/hide-rules", tags=["hide rules"])
 
 @router.get("")
 async def list_hide_rules(rules: HideRuleServiceDep) -> list[HideRuleOut]:
-    return await rules.list()
+    return await rules.list_all()
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)

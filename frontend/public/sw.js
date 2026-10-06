@@ -45,3 +45,29 @@ async function focusOrOpen(url) {
   }
   return self.clients.openWindow(url.href)
 }
+
+// The browser replaced the subscription (keys expired or were revoked): register the new one,
+// so notifications keep arriving without visiting the settings again.
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(renewSubscription(event.oldSubscription, event.newSubscription))
+})
+
+async function renewSubscription(oldSubscription, newSubscription) {
+  const options = oldSubscription?.options
+  const subscription =
+    newSubscription ?? (options ? await self.registration.pushManager.subscribe(options) : null)
+  if (!subscription) return
+  await sendSubscription("POST", subscription.toJSON())
+  if (oldSubscription && oldSubscription.endpoint !== subscription.endpoint) {
+    await sendSubscription("DELETE", { endpoint: oldSubscription.endpoint })
+  }
+}
+
+function sendSubscription(method, body) {
+  return fetch("/api/push/subscriptions", {
+    method,
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })
+}

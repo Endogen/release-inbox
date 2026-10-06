@@ -8,13 +8,7 @@ import {
 } from "lucide-react"
 import { useEffect, useRef } from "react"
 
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -112,7 +106,11 @@ export function ReleaseList({
 
 function ReleaseListSkeleton() {
   return (
-    <div className="flex flex-col" aria-busy aria-label="Loading releases">
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      aria-busy
+      aria-label="Loading releases"
+    >
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="flex gap-3 border-b border-border/60 px-4 py-3">
           <Skeleton className="size-9 rounded-lg" />
@@ -151,7 +149,11 @@ const EMPTY_STATES: Record<View, { icon: LucideIcon; title: string; description:
 }
 
 function ReleaseListEmpty({ view, search }: { view: View; search: string }) {
-  const { icon: Icon, title, description } = search
+  const {
+    icon: Icon,
+    title,
+    description,
+  } = search
     ? {
         icon: SearchXIcon,
         title: "No matches",

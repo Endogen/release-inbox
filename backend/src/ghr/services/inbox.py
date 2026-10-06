@@ -1,9 +1,9 @@
 """Inbox actions: read state, snoozing and repository subscriptions.
 
-Read state is owned by this application. Marking a release as read is mirrored to GitHub on a
-best-effort basis so the github.com inbox stays tidy; GitHub has no API to mark a thread unread,
-so marking as unread is local only. Mirroring runs after the response is sent (see
-``mirror_read``), so the user never waits for GitHub.
+Actions on a repository's entry affect exactly what the user saw in the view: the release and
+its ``+N older`` releases in that view. Read state is owned by this application; marking as
+read is mirrored to GitHub on a best-effort basis after the response is sent (``mirror_read``).
+GitHub has no API to mark a thread unread, so marking as unread is local only.
 """
 
 import asyncio
@@ -16,10 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.db import utcnow
-from ghr.errors import NotFoundError
+from ghr.domain import View
+from ghr.errors import ConflictError, NotFoundError
 from ghr.events import Event, EventBroker
 from ghr.github.client import GitHubClient, GitHubError
 from ghr.models import Release, Repository
+from ghr.services.filters import in_view, is_hidden
+from ghr.services.preferences import load_view_context
 
 logger = logging.getLogger(__name__)
 
@@ -32,44 +35,50 @@ class InboxService:
         self._github = github
         self._broker = broker
 
-    async def mark_read(self, release_id: int) -> list[str]:
-        """Mark a release and all older unread releases of its repository as read.
+    async def mark_read(self, release_id: int, *, include_older_in: View | None) -> list[str]:
+        """Mark a release as read, and the older unread releases in ``include_older_in``.
 
         Returns the notification threads to mirror to GitHub with ``mirror_read``.
         """
         release = await self._get_release(release_id)
-        return await self._mark_read(await self._older_unread(release))
+        older = await self._older_in_view(release, include_older_in) if include_older_in else []
+        targets = {release, *older}
+        return await self._mark_read([item for item in targets if item.read_at is None])
 
     async def mark_unread(self, release_id: int) -> None:
         release = await self._get_release(release_id)
         release.read_at = None
         release.snoozed_until = None
-        await self._session.commit()
-        self._broker.publish(Event("releases-changed"))
+        await self._commit()
 
-    async def snooze(self, release_id: int, until: datetime) -> None:
-        """Hide the repository's entry (this and older unread releases) until ``until``.
+    async def snooze(self, release_id: int, until: datetime, *, view: View) -> None:
+        """Hide the release and its older releases in ``view`` from the inbox until ``until``.
 
-        A newer release still shows up in the inbox right away.
+        A newer release of the repository still shows up in the inbox right away.
         """
         release = await self._get_release(release_id)
-        for item in await self._older_unread(release):
+        if release.read_at is not None:
+            raise ConflictError("Only unread releases can be snoozed")
+        if await self._is_hidden(release):
+            raise ConflictError("Hidden releases can't be snoozed")
+        for item in {release, *await self._older_in_view(release, view)}:
             item.snoozed_until = until
-        await self._session.commit()
-        self._broker.publish(Event("releases-changed"))
+        await self._commit()
 
     async def unsnooze(self, release_id: int) -> None:
+        """Undo a snooze: every release snoozed together with this one returns."""
         release = await self._get_release(release_id)
-        snoozed = await self._session.scalars(
+        if release.snoozed_until is None:
+            return
+        together = await self._session.scalars(
             select(Release).where(
                 Release.repository_id == release.repository_id,
-                Release.snoozed_until.is_not(None),
+                Release.snoozed_until == release.snoozed_until,
             )
         )
-        for item in snoozed:
+        for item in together:
             item.snoozed_until = None
-        await self._session.commit()
-        self._broker.publish(Event("releases-changed"))
+        await self._commit()
 
     async def unsubscribe(self, repository_id: int) -> list[str]:
         """Stop watching the repository on GitHub and clear its releases from the inbox.
@@ -80,7 +89,7 @@ class InboxService:
         if repository is None:
             raise NotFoundError("Repository", repository_id)
 
-        await self._github.unwatch_repository(repository.full_name)
+        await self._github.unwatch_repository(repository_id)
         repository.unsubscribed_at = utcnow()
         unread = await self._session.scalars(
             select(Release).where(Release.repository_id == repository_id, Release.read_at.is_(None))
@@ -102,24 +111,35 @@ class InboxService:
 
         await asyncio.gather(*(mark(thread_id) for thread_id in thread_ids))
 
-    async def _older_unread(self, release: Release) -> Sequence[Release]:
-        unread = await self._session.scalars(
+    async def _older_in_view(self, release: Release, view: View) -> Sequence[Release]:
+        context = await load_view_context(self._session)
+        older = await self._session.scalars(
             select(Release).where(
                 Release.repository_id == release.repository_id,
-                Release.read_at.is_(None),
                 Release.published_at <= release.published_at,
+                in_view(view, context),
             )
         )
-        return unread.all()
+        return older.all()
+
+    async def _is_hidden(self, release: Release) -> bool:
+        context = await load_view_context(self._session)
+        hidden = await self._session.scalar(
+            select(is_hidden(context.prereleases)).where(Release.id == release.id)
+        )
+        return bool(hidden)
 
     async def _mark_read(self, releases: Sequence[Release]) -> list[str]:
         now = utcnow()
         for release in releases:
             release.read_at = now
             release.snoozed_until = None
+        await self._commit()
+        return [release.thread_id for release in releases]
+
+    async def _commit(self) -> None:
         await self._session.commit()
         self._broker.publish(Event("releases-changed"))
-        return [release.thread_id for release in releases]
 
     async def _get_release(self, release_id: int) -> Release:
         release = await self._session.get(Release, release_id)

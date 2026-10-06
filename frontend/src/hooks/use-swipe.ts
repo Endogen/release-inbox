@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-  type PointerEvent,
-} from "react"
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react"
 
 export type SwipeDirection = "left" | "right"
 export type SwipePhase = "idle" | "dragging" | "settling" | "leaving"
@@ -91,9 +84,7 @@ export function useSwipe({ onSwipeLeft, onSwipeRight }: SwipeOptions) {
       setPhase("dragging")
     }
 
-    const next = handlerFor(dx)
-      ? dx
-      : Math.sign(dx) * Math.min(Math.abs(dx) * 0.2, BLOCKED_MAX_PX)
+    const next = handlerFor(dx) ? dx : Math.sign(dx) * Math.min(Math.abs(dx) * 0.2, BLOCKED_MAX_PX)
     const triggered = Boolean(handlerFor(dx)) && Math.abs(next) >= triggerDistance(current.width)
     if (triggered && !triggeredRef.current) navigator.vibrate?.(10)
     triggeredRef.current = triggered

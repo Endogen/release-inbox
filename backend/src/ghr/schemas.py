@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
+from ghr.domain import PrereleaseMode, View
+
 
 class Schema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -12,7 +14,6 @@ class Schema(BaseModel):
 class RepositoryOut(Schema):
     id: int
     full_name: str
-    owner_login: str
     owner_avatar_url: str
     html_url: str
     description: str | None
@@ -70,8 +71,16 @@ class ReleaseRef(Schema):
     is_hidden: bool
 
 
+class MarkReadRequest(BaseModel):
+    #: Also mark the older unread releases of the repository in this view (what the user
+    #: saw as ``+N older``). ``None`` marks only the release itself.
+    include_older_in: View | None = None
+
+
 class SnoozeRequest(BaseModel):
     until: AwareDatetime
+    #: The view the user snoozed from; older releases of the repository in it are snoozed too.
+    view: View = View.INBOX
 
     @field_validator("until")
     @classmethod
@@ -118,6 +127,8 @@ class SyncStatus(Schema):
     last_attempt_at: datetime | None
     last_error: str | None
     in_progress: bool
+    #: GitHub asked not to be contacted before this time (rate limit); syncs wait for it.
+    rate_limited_until: datetime | None = None
 
 
 class Credentials(BaseModel):
@@ -130,13 +141,11 @@ class CurrentUser(Schema):
 
 
 class PreferencesOut(Schema):
-    show_prereleases: bool
-    notify_prereleases: bool
+    prereleases: PrereleaseMode
 
 
 class PreferencesUpdate(BaseModel):
-    show_prereleases: bool | None = None
-    notify_prereleases: bool | None = None
+    prereleases: PrereleaseMode
 
 
 class NotificationChannelOut(Schema):
@@ -153,8 +162,11 @@ class SummaryConfig(Schema):
     model: str | None
 
 
+MAX_SUMMARIZED_RELEASES = 20
+
+
 class SummaryRequest(BaseModel):
-    release_ids: list[int] = Field(min_length=1, max_length=20)
+    release_ids: list[int] = Field(min_length=1, max_length=MAX_SUMMARIZED_RELEASES)
 
 
 class SummaryOut(Schema):

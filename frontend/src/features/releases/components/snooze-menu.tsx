@@ -12,13 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useNow } from "@/hooks/use-now"
-import { snoozeOptions } from "@/lib/snooze-times"
+import { formatWeekdayTime } from "@/lib/time"
 
-const TIME = new Intl.DateTimeFormat(undefined, {
-  weekday: "short",
-  hour: "numeric",
-  minute: "2-digit",
-})
+import { snoozeOptions } from "../snooze-times"
 
 interface SnoozeMenuProps {
   open: boolean
@@ -44,14 +40,12 @@ export function SnoozeMenu({ open, onOpenChange, onSnooze, renderTrigger }: Snoo
     <DropdownMenu open={open} onOpenChange={onOpenChange}>
       {renderTrigger ? renderTrigger(trigger) : trigger}
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-          Back in the inbox
-        </DropdownMenuLabel>
         <DropdownMenuGroup>
+          <DropdownMenuLabel>Back in the inbox</DropdownMenuLabel>
           {options.map((option) => (
             <DropdownMenuItem key={option.id} onSelect={() => onSnooze(option.until)}>
               {option.label}
-              <DropdownMenuShortcut>{TIME.format(option.until)}</DropdownMenuShortcut>
+              <DropdownMenuShortcut>{formatWeekdayTime(option.until)}</DropdownMenuShortcut>
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>

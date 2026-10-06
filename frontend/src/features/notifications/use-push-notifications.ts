@@ -3,12 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api/client"
 import type { PushConfig } from "@/lib/api/types"
 
-import {
-  getActiveSubscription,
-  getPushSupport,
-  subscribeToPush,
-  unsubscribeFromPush,
-} from "./push"
+import { getActiveSubscription, getPushSupport, subscribeToPush, unsubscribeFromPush } from "./push"
 
 const pushKeys = {
   config: ["push", "config"] as const,
@@ -40,11 +35,13 @@ export function usePushNotifications() {
       if (!publicKey) throw new Error("Push notifications are not configured on the server.")
       return subscribeToPush(publicKey)
     },
+    meta: { errorMessage: "Couldn't turn on browser push" },
     onSettled: refreshSubscription,
   })
 
   const disable = useMutation({
     mutationFn: unsubscribeFromPush,
+    meta: { errorMessage: "Couldn't turn off browser push" },
     onSettled: refreshSubscription,
   })
 

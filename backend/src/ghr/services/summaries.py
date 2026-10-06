@@ -12,7 +12,6 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ghr.db import utcnow
 from ghr.errors import NotFoundError
 from ghr.models import Release, Summary
 from ghr.schemas import SummaryOut
@@ -103,10 +102,33 @@ class SummaryService:
         self._session = session
         self._summarizer = summarizer
 
+    async def find(self, release_ids: Sequence[int]) -> SummaryOut | None:
+        """The cached summary of these releases, if one was created before."""
+        summarizer = self._require_summarizer()
+        notes = await self._load_notes(release_ids)
+        cached = await self._session.get(Summary, _cache_key(summarizer.model, notes))
+        return SummaryOut(content=cached.content, model=cached.model) if cached else None
+
     async def summarize(self, release_ids: Sequence[int]) -> SummaryOut:
+        """Summarize the releases with Claude, or return the cached summary."""
+        summarizer = self._require_summarizer()
+        notes = await self._load_notes(release_ids)
+        key = _cache_key(summarizer.model, notes)
+        if cached := await self._session.get(Summary, key):
+            return SummaryOut(content=cached.content, model=cached.model)
+
+        content = await summarizer.summarize(notes)
+        statement = sqlite_insert(Summary).values(key=key, content=content, model=summarizer.model)
+        await self._session.execute(statement.on_conflict_do_nothing())
+        await self._session.commit()
+        return SummaryOut(content=content, model=summarizer.model)
+
+    def _require_summarizer(self) -> Summarizer:
         if self._summarizer is None:
             raise SummaryError("Summaries aren't configured. Set GHR_ANTHROPIC_API_KEY.")
+        return self._summarizer
 
+    async def _load_notes(self, release_ids: Sequence[int]) -> list[ReleaseNotes]:
         releases = list(
             await self._session.scalars(
                 select(Release)
@@ -118,19 +140,7 @@ class SummaryService:
         missing = set(release_ids) - {release.id for release in releases}
         if missing:
             raise NotFoundError("Release", sorted(missing)[0])
-
-        notes = [_notes(release) for release in releases]
-        key = _cache_key(self._summarizer.model, notes)
-        if cached := await self._session.get(Summary, key):
-            return SummaryOut(content=cached.content, model=cached.model)
-
-        content = await self._summarizer.summarize(notes)
-        statement = sqlite_insert(Summary).values(
-            key=key, content=content, model=self._summarizer.model, created_at=utcnow()
-        )
-        await self._session.execute(statement.on_conflict_do_nothing())
-        await self._session.commit()
-        return SummaryOut(content=content, model=self._summarizer.model)
+        return [_notes(release) for release in releases]
 
 
 def _notes(release: Release) -> ReleaseNotes:

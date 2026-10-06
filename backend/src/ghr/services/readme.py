@@ -1,4 +1,8 @@
-"""Repository READMEs, cached locally and revalidated with conditional requests."""
+"""Repository READMEs, cached locally and revalidated with conditional requests.
+
+Private repositories are always fetched in full: their ``download_url`` carries a short-lived
+access token for images, and a "not modified" answer would keep serving an expired one.
+"""
 
 from datetime import timedelta
 
@@ -27,9 +31,8 @@ class ReadmeService:
         if cached is not None and utcnow() - cached.fetched_at < self._max_age:
             return ReadmeOut.model_validate(cached)
 
-        result = await self._github.get_readme(
-            repository.full_name, etag=cached.etag if cached else None
-        )
+        etag = cached.etag if cached is not None and not repository.private else None
+        result = await self._github.get_readme(repository_id, etag=etag)
         if result is None:
             if cached is not None:
                 await self._session.delete(cached)

@@ -24,6 +24,11 @@ const absoluteFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 })
+const weekdayTimeFormat = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  hour: "numeric",
+  minute: "2-digit",
+})
 
 function elapsed(date: string | Date, now: number): number {
   return Math.max(0, now - new Date(date).getTime())
@@ -46,4 +51,9 @@ export function formatRelative(date: string | Date, now: number): string {
 
 export function formatAbsolute(date: string | Date): string {
   return absoluteFormat.format(new Date(date))
+}
+
+/** Weekday and time such as "Tue 9:00 AM", for times within the coming week. */
+export function formatWeekdayTime(date: Date): string {
+  return weekdayTimeFormat.format(date)
 }

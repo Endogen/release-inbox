@@ -1,5 +1,7 @@
 /** Resolution of the URLs found in release notes and READMEs, which are relative to GitHub. */
 
+import type { Readme, Repository } from "@/lib/api/types"
+
 export interface MarkdownBaseUrls {
   /** Base for relative links, e.g. "https://github.com/owner/repo/blob/main/". */
   links: string
@@ -10,23 +12,25 @@ export interface MarkdownBaseUrls {
 }
 
 /** Sanitised markdown prefixes element ids to avoid clobbering the page's own ids. */
-export const ID_PREFIX = "user-content-"
+const ID_PREFIX = "user-content-"
 
 const ABSOLUTE_URL = /^[a-z][a-z\d+.-]*:|^\/\//i
 
 /** Base URLs for files referenced from a release of a repository. */
-export function repositoryBaseUrls(repositoryHtmlUrl: string, fullName: string): MarkdownBaseUrls {
+export function repositoryBaseUrls(
+  repository: Pick<Repository, "html_url" | "full_name">
+): MarkdownBaseUrls {
   return {
-    links: `${repositoryHtmlUrl}/blob/HEAD/`,
-    images: `https://raw.githubusercontent.com/${fullName}/HEAD/`,
+    links: `${repository.html_url}/blob/HEAD/`,
+    images: `https://raw.githubusercontent.com/${repository.full_name}/HEAD/`,
   }
 }
 
 /** Base URLs relative to the directory that contains a file, such as a README. */
-export function fileBaseUrls(htmlUrl: string, downloadUrl: string): MarkdownBaseUrls {
-  const download = new URL(downloadUrl)
+export function fileBaseUrls(file: Pick<Readme, "html_url" | "download_url">): MarkdownBaseUrls {
+  const download = new URL(file.download_url)
   return {
-    links: directory(htmlUrl),
+    links: directory(file.html_url),
     images: directory(`${download.origin}${download.pathname}`),
     imageQuery: download.search ? download.search.slice(1) : undefined,
   }
@@ -34,15 +38,20 @@ export function fileBaseUrls(htmlUrl: string, downloadUrl: string): MarkdownBase
 
 /** In-page anchor target for ``#heading``, matching the prefixed ids of sanitised markdown. */
 export function anchorTarget(hash: string): string {
-  const id = decodeURIComponent(hash.replace(/^#/, ""))
+  const id = decodeOrKeep(hash.replace(/^#/, ""))
   return id.startsWith(ID_PREFIX) ? id : `${ID_PREFIX}${id}`
 }
 
-/** Resolve a link (``kind: "link"``) or image (``kind: "image"``) URL against the bases. */
+/**
+ * Resolve a link (``kind: "link"``) or image (``kind: "image"``) URL against the bases.
+ * URLs that can't be parsed are returned unchanged.
+ */
 export function resolveUrl(url: string, kind: "link" | "image", bases: MarkdownBaseUrls): string {
   if (url.startsWith("#")) return `#${anchorTarget(url)}`
   if (ABSOLUTE_URL.test(url)) return url
-  const resolved = new URL(url.replace(/^\.\//, ""), kind === "image" ? bases.images : bases.links)
+  const base = kind === "image" ? bases.images : bases.links
+  if (!URL.canParse(url, base)) return url
+  const resolved = new URL(url.replace(/^\.\//, ""), base)
   if (kind === "image" && bases.imageQuery && !resolved.search) {
     resolved.search = bases.imageQuery
   }
@@ -59,6 +68,15 @@ export function resolveSrcSet(srcSet: string, bases: MarkdownBaseUrls): string {
     })
     .filter(Boolean)
     .join(", ")
+}
+
+/** Percent-decode, keeping text that isn't valid percent-encoding as it is. */
+function decodeOrKeep(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
 }
 
 function directory(url: string): string {

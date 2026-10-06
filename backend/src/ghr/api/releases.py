@@ -3,9 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Query, status
 
 from ghr.api.deps import InboxServiceDep, ReleaseQueriesDep
-from ghr.errors import NotFoundError
-from ghr.schemas import ReleaseDetail, ReleasePage, SnoozeRequest, ViewCounts
-from ghr.services.filters import View
+from ghr.domain import View
+from ghr.schemas import MarkReadRequest, ReleaseDetail, ReleasePage, SnoozeRequest, ViewCounts
 
 router = APIRouter(prefix="/releases", tags=["releases"])
 
@@ -31,19 +30,21 @@ async def count_releases(queries: ReleaseQueriesDep, q: SearchQuery = None) -> V
 
 @router.get("/{release_id}")
 async def get_release(release_id: int, queries: ReleaseQueriesDep) -> ReleaseDetail:
-    release = await queries.get(release_id)
-    if release is None:
-        raise NotFoundError("Release", release_id)
-    return release
+    return await queries.get(release_id)
 
 
 @router.post("/{release_id}/read", status_code=status.HTTP_204_NO_CONTENT)
-async def mark_read(release_id: int, inbox: InboxServiceDep, background: BackgroundTasks) -> None:
-    """Mark the release and all older releases of its repository as read.
+async def mark_read(
+    release_id: int,
+    payload: MarkReadRequest,
+    inbox: InboxServiceDep,
+    background: BackgroundTasks,
+) -> None:
+    """Mark the release as read, and its older releases in ``include_older_in``.
 
     GitHub is updated after the response is sent.
     """
-    thread_ids = await inbox.mark_read(release_id)
+    thread_ids = await inbox.mark_read(release_id, include_older_in=payload.include_older_in)
     background.add_task(inbox.mirror_read, thread_ids)
 
 
@@ -54,10 +55,11 @@ async def mark_unread(release_id: int, inbox: InboxServiceDep) -> None:
 
 @router.post("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)
 async def snooze(release_id: int, payload: SnoozeRequest, inbox: InboxServiceDep) -> None:
-    """Hide the repository's entry from the inbox until the given time."""
-    await inbox.snooze(release_id, payload.until)
+    """Hide the release and its older releases in the view until the given time."""
+    await inbox.snooze(release_id, payload.until, view=payload.view)
 
 
 @router.delete("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)
 async def unsnooze(release_id: int, inbox: InboxServiceDep) -> None:
+    """Undo a snooze: the releases snoozed together with this one return."""
     await inbox.unsnooze(release_id)

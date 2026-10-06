@@ -30,11 +30,12 @@ export function ReleaseVersionSelect({
   const now = useNow()
   const { data: releases } = useReleaseHistory(repositoryId)
   if (!releases || releases.length < 2) return null
+  const current = releases.find((release) => release.id === releaseId)
 
   return (
     <Select value={String(releaseId)} onValueChange={(value) => onSelect(Number(value))}>
-      <SelectTrigger size="sm" aria-label="Version" className="max-w-56">
-        <SelectValue />
+      <SelectTrigger size="sm" aria-label="Version" className="max-w-48 font-mono">
+        <SelectValue>{current?.tag_name}</SelectValue>
       </SelectTrigger>
       <SelectContent position="popper" align="end" className="max-h-80">
         <SelectGroup>

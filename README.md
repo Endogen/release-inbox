@@ -9,32 +9,34 @@ when something new ships.
 - **One entry per repository.** Only the newest release is listed (`+N older` shows the rest;
   switch versions in the detail view). **What's new** combines the notes of every unread
   release of a repository, so nothing between your last visit and the newest release is missed.
-- **Inbox, Snoozed, Read and Hidden views.** Marking a release as read moves it, and all older
-  releases of the repository, to *Read*. Read state is mirrored to github.com.
+- **Inbox, Snoozed, Read and Hidden views.** Every release is in exactly one of them. Actions
+  on an entry cover what it stands for: marking it as read moves the release and its `+N older`
+  releases in that view to *Read*. Read state is mirrored to github.com.
 - **Snooze.** Put a release aside until later today, tomorrow, the weekend or next week. It
   comes back to the inbox with a reminder notification.
 - **Breaking changes stand out.** Releases whose notes mention breaking changes, or that are a
   new major version of a component, get a *Breaking* badge.
 - **Hide components.** Hide releases of a single component of a repository, such as `web@*` in
   a monorepo, without unsubscribing. Hidden releases stay available in the *Hidden* view.
-- **Pre-releases on your terms.** Settings can leave them out of the inbox, or just not notify
-  about them.
+- **Pre-releases on your terms.** Treat them like other releases, keep them in the inbox
+  without notifications, or keep them in the *Hidden* view.
 - **Unsubscribe in one click.** Stops watching the repository on GitHub.
-- **Swipe to triage.** In the inbox, swipe an entry left to mark it as read or right to
-  unsubscribe. Both actions, whether you swipe, click or use a shortcut, show a toast with
+- **Swipe to triage.** In the inbox and snoozed views, swipe an entry left to mark it as read
+  or right to unsubscribe. Both actions, whether you swipe, click or use a shortcut, show a toast with
   **Undo** for six seconds. The change is only sent to GitHub after that, so undoing leaves
   GitHub untouched. When you leave the page or switch apps, pending actions are sent right away.
 - **AI summaries.** Summarize a release, or everything that's new in a repository, with Claude.
   Summaries are cached and created only when you ask.
 - **Release notes and README** rendered as GitHub-flavoured markdown, with working anchors,
-  footnotes, light/dark logos and images from private repositories.
+  footnotes, light/dark logos, and relative images in READMEs of private repositories.
 - **Search** across repositories, release names, tags and notes.
 - **Notifications where you want them.** Browser push, [ntfy](https://ntfy.sh) and Telegram.
   Every repository you watch notifies you, including ones you start watching later; mute a
   repository with the bell on one of its releases (or `m`).
-- **Live updates.** GitHub is polled every minute (at the interval GitHub asks for). Open tabs
-  update instantly via server-sent events. Recent releases are re-checked every 30 minutes, so
-  edited notes and promotions from pre-release show up.
+- **Live updates.** GitHub is polled every minute (at the interval GitHub asks for), and
+  *Sync now* polls right away. Open tabs update instantly via server-sent events. Recent
+  releases are re-checked every 30 minutes, so edited notes show up, and a pre-release that is
+  promoted to a stable release notifies you again.
 - **Keyboard driven.** `j`/`k` navigate, `e` marks as read, `s` snoozes, `h` hides, `o` opens on
   GitHub, `/` searches, and `?` lists all shortcuts.
 - Light and dark theme, responsive layout, installable as an app.
@@ -52,18 +54,29 @@ That process also runs the poller, so run exactly one instance.
 
 | Backend module                 | Responsibility                                                |
 | ------------------------------ | ------------------------------------------------------------- |
+| `ghr.domain`                   | The views and pre-release modes shared by all layers          |
 | `ghr.github`                   | Typed client for the GitHub REST API                          |
 | `ghr.services.sync`            | Imports release notifications and refreshes recent releases   |
+| `ghr.services.filters`         | SQL conditions for the views, hiding and search               |
 | `ghr.services.releases`        | Read-side queries: views, counts, search, history, what's new |
 | `ghr.services.inbox`           | Read state, snoozing and unsubscribing                        |
 | `ghr.services.breaking`        | Breaking-change detection                                     |
 | `ghr.services.hide_rules`      | Hide rules and their previews                                 |
 | `ghr.services.notifications`   | Web Push, ntfy and Telegram, and what gets announced          |
 | `ghr.services.snooze`          | Ends snoozes and sends reminders                              |
+| `ghr.services.preferences`     | User preferences (pre-release mode)                           |
 | `ghr.services.summaries`       | Claude summaries and their cache                              |
 | `ghr.services.readme`          | README cache with conditional requests                        |
-| `ghr.scheduler`                | Background loop: sync, snoozes, refresh, rate-limit backoff   |
+| `ghr.scheduler`                | Background loops: sync, refresh, snoozes, rate-limit backoff  |
 | `ghr.api`                      | HTTP routes; everything except sign-in requires a session     |
+
+| Frontend directory             | Responsibility                                                 |
+| ------------------------------ | -------------------------------------------------------------- |
+| `src/app`                      | Providers, routing, header and app-wide error handling         |
+| `src/features/<feature>`       | One area each: its API hooks (`api.ts`), components and logic  |
+| `src/features/releases`        | The inbox: list, detail, actions with undo, keyboard shortcuts |
+| `src/components`               | Shared components; `ui/` holds the shadcn/ui components        |
+| `src/hooks`, `src/lib`         | Generic hooks, the API client, time and markdown URL helpers   |
 
 ### Behaviour worth knowing
 
@@ -72,7 +85,8 @@ That process also runs the poller, so run exactly one instance.
   Polling uses `If-Modified-Since`, so a poll that finds nothing new returns `304` and doesn't
   count against your rate limit. When GitHub asks to slow down, the app waits as long as asked.
 - **Robust sync.** A single release that is deleted or no longer accessible (for example
-  because of SSO enforcement) is skipped instead of blocking the sync. Renamed repositories are
+  because of SSO enforcement) is skipped instead of blocking the sync. A release is only removed
+  when GitHub reports it gone while its repository is still reachable. Renamed repositories are
   followed. Progress of a long first import is kept if it is interrupted.
 - **Read state.** The app is the source of truth. Releases that were already read on GitHub
   are imported as read. Marking as read also marks the GitHub thread as read. GitHub has no API
@@ -119,13 +133,20 @@ Checks (also run by GitHub Actions on every push):
 
 ```bash
 cd backend && uv run pytest && uv run ruff check . && uv run ruff format --check .
-cd frontend && npm test && npm run typecheck && npm run lint && npm run build
+cd frontend && npm test && npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 
 ## Deployment on Ubuntu
 
-The steps assume the domain `releases.example.com`, the code in `/opt/ghr`, and nginx and
-certbot installed (`sudo apt install nginx certbot python3-certbot-nginx`).
+The steps assume Ubuntu 24.04, the domain `releases.example.com` and the code in `/opt/ghr`.
+uv uses the system's Python 3.12. Ubuntu's Node.js is too old to build the frontend, so install
+Node.js 22 from NodeSource:
+
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo bash -
+sudo apt install nodejs
+```
 
 1. **GitHub token.** Create a *classic* personal access token at
    <https://github.com/settings/tokens> with the `notifications` and `repo` scopes.
@@ -189,7 +210,15 @@ certbot installed (`sudo apt install nginx certbot python3-certbot-nginx`).
    sudo systemctl daemon-reload && sudo systemctl enable --now ghr-backup.timer
    ```
 
-   To restore, stop the service and copy a backup over `/var/lib/ghr/ghr.db`.
+   To restore, stop the service, replace the database (removing the write-ahead log of the
+   old one) and start it again:
+
+   ```bash
+   sudo systemctl stop ghr
+   sudo rm -f /var/lib/ghr/ghr.db-wal /var/lib/ghr/ghr.db-shm
+   sudo install -m 0640 -o ghr -g ghr /var/backups/ghr/<backup>.db /var/lib/ghr/ghr.db
+   sudo systemctl start ghr
+   ```
 
 **Updating**
 
@@ -210,7 +239,7 @@ All settings are environment variables with the `GHR_` prefix.
 | `GHR_USERNAME`                      | required                 | Sign-in name                                         |
 | `GHR_PASSWORD_HASH`                 | required                 | Argon2 hash from `ghr hash-password`                 |
 | `GHR_SESSION_SECRET`                | required                 | At least 32 characters, from `ghr generate-secret`   |
-| `GHR_SESSION_MAX_AGE_DAYS`          | `30`                     | How long a sign-in lasts                             |
+| `GHR_SESSION_MAX_AGE_DAYS`          | `30`                     | Sign-ins end after this many days without a visit    |
 | `GHR_SECURE_COOKIES`                | `true`                   | Set to `false` only for local HTTP development       |
 | `GHR_LOGIN_MAX_FAILURES`            | `10`                     | Failed sign-ins per address before it is blocked     |
 | `GHR_LOGIN_WINDOW_SECONDS`          | `900`                    | Time window for the sign-in limit                    |

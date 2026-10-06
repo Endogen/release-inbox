@@ -4,7 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { useSwipe } from "./use-swipe"
 
-function Row({ onLeft, onRight, onClick }: { onLeft?: () => void; onRight?: () => void; onClick: () => void }) {
+function Row({
+  onLeft,
+  onRight,
+  onClick,
+}: {
+  onLeft?: () => void
+  onRight?: () => void
+  onClick: () => void
+}) {
   const swipe = useSwipe({ onSwipeLeft: onLeft, onSwipeRight: onRight })
   return (
     <div data-testid="row" data-offset={swipe.offset} data-armed={swipe.armed} {...swipe.handlers}>

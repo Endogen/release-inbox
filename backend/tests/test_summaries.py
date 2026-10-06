@@ -1,4 +1,6 @@
-from collections.abc import Sequence
+"""AI summaries: caching, configuration and the Claude request."""
+
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import replace
 from datetime import timedelta
 from types import SimpleNamespace
@@ -8,8 +10,10 @@ import pytest
 import respx
 from httpx import AsyncClient, Response
 
+from ghr.config import Settings
 from ghr.container import Container
 from ghr.services.summaries import ClaudeSummarizer, ReleaseNotes, SummaryError
+from tests.conftest import migrate
 from tests.github_fixtures import FakeRelease, mock_github
 
 RELEASE = FakeRelease(1, 10, "acme/app", "v1.0.0", "2026-10-01T10:00:00Z", body="Added a thing")
@@ -30,11 +34,19 @@ class FakeSummarizer:
 
 
 @pytest.fixture
-def summarizer(container: Container) -> FakeSummarizer:
-    fake = FakeSummarizer()
-    # The container is frozen; the summarizer is only read through this attribute.
-    object.__setattr__(container, "summarizer", fake)
-    return fake
+def summarizer(request: pytest.FixtureRequest) -> FakeSummarizer | None:
+    """A fake summarizer; parametrize indirectly with ``None`` for an unconfigured app."""
+    return getattr(request, "param", FakeSummarizer())
+
+
+@pytest.fixture
+async def container(
+    settings: Settings, summarizer: FakeSummarizer | None
+) -> AsyncIterator[Container]:
+    await migrate(settings)
+    container = Container.build(settings, summarizer=summarizer)
+    yield container
+    await container.aclose()
 
 
 async def test_summaries_are_cached_until_the_notes_change(
@@ -52,18 +64,21 @@ async def test_summaries_are_cached_until_the_notes_change(
     assert first.json() == {"content": "- 1 release(s)", "model": "fake-model"}
     assert second.json() == first.json()
     assert len(summarizer.calls) == 1
+    cached = await user_client.get("/api/summaries", params={"release_ids": [RELEASE.id]})
+    assert cached.json() == first.json()
 
     edited = replace(RELEASE, body="Added a thing and fixed another")
-    github_api.get(RELEASE.api_url).mock(return_value=Response(200, json=edited.release()))
+    github_api.get(RELEASE.refresh_url).mock(return_value=Response(200, json=edited.release()))
     await container.sync.refresh_recent(published_within=timedelta(days=30))
+    stale = await user_client.get("/api/summaries", params={"release_ids": [RELEASE.id]})
     await user_client.post("/api/summaries", json={"release_ids": [RELEASE.id]})
 
+    assert stale.status_code == 404
     assert len(summarizer.calls) == 2
 
 
-async def test_unknown_releases_and_missing_configuration(
-    container: Container, user_client: AsyncClient
-) -> None:
+@pytest.mark.parametrize("summarizer", [None], indirect=True)
+async def test_missing_configuration(user_client: AsyncClient) -> None:
     config = await user_client.get("/api/summaries/config")
     assert config.json() == {"enabled": False, "model": None}
 
@@ -73,9 +88,12 @@ async def test_unknown_releases_and_missing_configuration(
     assert "GHR_ANTHROPIC_API_KEY" in response.json()["detail"]
 
 
-async def test_rejects_empty_requests(user_client: AsyncClient) -> None:
-    response = await user_client.post("/api/summaries", json={"release_ids": []})
-    assert response.status_code == 422
+async def test_rejects_empty_and_unknown_requests(user_client: AsyncClient) -> None:
+    empty = await user_client.post("/api/summaries", json={"release_ids": []})
+    unknown = await user_client.post("/api/summaries", json={"release_ids": [999]})
+    too_many = await user_client.post("/api/summaries", json={"release_ids": list(range(21))})
+
+    assert (empty.status_code, unknown.status_code, too_many.status_code) == (422, 404, 422)
 
 
 class StubMessages:

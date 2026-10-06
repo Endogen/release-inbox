@@ -2,7 +2,7 @@ import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon, ZapIcon } from "lucid
 import { memo, type Ref } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
-import { RepoAvatar } from "@/components/repo-avatar"
+import { RepoAvatar } from "@/components/avatars"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -108,10 +108,10 @@ export const ReleaseListItem = memo(function ReleaseListItem({
               </Badge>
             )}
             {release.snoozed_until && (
-              <span className="flex shrink-0 items-center gap-1">
-                <AlarmClockIcon className="size-3" aria-hidden />
-                until {formatAbsolute(release.snoozed_until)}
-              </span>
+              <Badge variant="outline" className="shrink-0">
+                <AlarmClockIcon data-icon="inline-start" />
+                Until {formatAbsolute(release.snoozed_until)}
+              </Badge>
             )}
           </div>
         </div>
@@ -147,7 +147,7 @@ const SWIPE_ACTIONS = {
   right: {
     label: "Unsubscribe",
     icon: BellOffIcon,
-    className: "bg-destructive text-white",
+    className: "bg-destructive text-destructive-foreground",
   },
 } as const
 

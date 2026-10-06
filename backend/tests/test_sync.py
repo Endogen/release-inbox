@@ -1,16 +1,22 @@
+"""Importing release notifications from GitHub."""
+
 import asyncio
+from datetime import timedelta
 
 import respx
 from httpx import AsyncClient, Response
 from sqlalchemy import select
 
 from ghr.container import Container
+from ghr.events import Event
+from ghr.github.client import format_timestamp
 from ghr.models import Release, Repository, SyncState
 from tests.conftest import GITHUB_API, SentNotifications
-from tests.github_fixtures import FakeRelease, mock_github, mock_release
+from tests.github_fixtures import ISSUE_NOTIFICATION, FakeRelease, mock_github, mock_release
 
 FIRST = FakeRelease(1, 10, "acme/app", "v1.0.0", "2026-10-01T10:00:00Z")
 SECOND = FakeRelease(2, 20, "acme/tool", "v2.0.0", "2026-10-02T10:00:00Z")
+READ = FakeRelease(3, 30, "acme/lib", "v0.1.0", "2026-10-03T10:00:00Z", unread=False)
 
 
 async def stored_release_ids(container: Container) -> set[int]:
@@ -25,7 +31,20 @@ async def sync_state(container: Container) -> SyncState:
         return state
 
 
-class TestNotificationList:
+class TestImport:
+    async def test_imports_release_notifications_with_their_read_state(
+        self, container: Container, github_api: respx.MockRouter
+    ) -> None:
+        mock_github(github_api, [FIRST, READ], extra_notifications=[ISSUE_NOTIFICATION])
+
+        result = await container.sync.sync()
+
+        assert (result.imported, result.error) == (2, None)
+        async with container.session_factory() as session:
+            read_at = dict(list(await session.execute(select(Release.id, Release.read_at))))
+        assert read_at[FIRST.id] is None
+        assert read_at[READ.id] is not None
+
     async def test_follows_pagination(
         self, container: Container, github_api: respx.MockRouter
     ) -> None:
@@ -41,28 +60,46 @@ class TestNotificationList:
         mock_release(github_api, FIRST)
         mock_release(github_api, SECOND)
 
-        result = await container.sync.sync()
+        await container.sync.sync()
 
-        assert result.imported == 2
         assert await stored_release_ids(container) == {1, 2}
 
-    async def test_uses_github_time_and_documented_format_for_since(
+    async def test_polls_conditionally_with_github_time(
         self, container: Container, github_api: respx.MockRouter
     ) -> None:
-        route = mock_github(github_api, [FIRST])
+        mock_github(github_api, [FIRST])
         await container.sync.sync()
+        route = github_api.get("/notifications").mock(return_value=Response(304))
 
-        await container.sync.sync()
+        result = await container.sync.sync()
 
+        request = route.calls.last.request
+        assert result.imported == 0
+        assert request.headers["If-Modified-Since"] == "Mon, 05 Oct 2026 12:00:00 GMT"
         # GitHub's Date header was 12:00:30; the next poll overlaps by five minutes.
-        assert route.calls.last.request.url.params["since"] == "2026-10-05T11:55:30Z"
+        assert request.url.params["since"] == "2026-10-05T11:55:30Z"
+
+    async def test_lists_update_after_every_batch(
+        self, container: Container, github_api: respx.MockRouter
+    ) -> None:
+        releases = [
+            FakeRelease(100 + index, 10, "acme/app", f"v1.{index}.0", "2026-10-01T10:00:00Z")
+            for index in range(30)
+        ]
+        mock_github(github_api, releases)
+        published: list[Event] = []
+        container.broker.publish = published.append  # type: ignore[method-assign]
+
+        await container.sync.sync()
+
+        assert [event.type for event in published].count("releases-changed") == 2
 
 
 class TestFailingReleases:
     async def test_skips_drafts_and_deleted_releases(
         self, container: Container, github_api: respx.MockRouter
     ) -> None:
-        draft = FakeRelease(3, 30, "acme/draft", "v0.1.0", "2026-10-03T10:00:00Z", draft=True)
+        draft = FakeRelease(4, 40, "acme/draft", "v0.1.0", "2026-10-03T10:00:00Z", draft=True)
         mock_github(github_api, [FIRST, draft, SECOND])
         github_api.get(SECOND.api_url).mock(return_value=Response(404))
 
@@ -93,32 +130,39 @@ class TestFailingReleases:
         github_api.get(FIRST.api_url).mock(return_value=Response(301, headers={"Location": moved}))
         github_api.get(moved).mock(return_value=Response(200, json=FIRST.release()))
 
-        result = await container.sync.sync()
+        assert (await container.sync.sync()).imported == 1
 
-        assert result.imported == 1
-
-    async def test_ignores_release_urls_outside_the_api(
+    async def test_never_calls_urls_outside_the_api(
         self, container: Container, github_api: respx.MockRouter
     ) -> None:
         foreign = FIRST.notification()
         foreign["subject"]["url"] = "https://attacker.test/collect"
-        github_api.get("/notifications").mock(return_value=Response(200, json=[foreign]))
+        github_api.get("/notifications").mock(
+            return_value=Response(
+                200,
+                json=[foreign],
+                headers={"Link": '<https://attacker.test/page2>; rel="next"'},
+            )
+        )
 
         result = await container.sync.sync()
 
-        assert result.error is None
+        # The foreign pagination link aborts the sync before any foreign request is made.
+        assert result.error is not None and "outside the GitHub API" in result.error
         assert await stored_release_ids(container) == set()
 
 
 class TestFailures:
-    async def test_rate_limit_is_reported_and_keeps_imported_batches(
-        self, container: Container, github_api: respx.MockRouter
+    async def test_rate_limit_keeps_and_announces_imported_batches(
+        self, container: Container, github_api: respx.MockRouter, sent: SentNotifications
     ) -> None:
+        mock_github(github_api, [FIRST])
+        await container.sync.sync()
         releases = [
-            FakeRelease(100 + index, 10, "acme/app", f"v1.{index}.0", "2026-10-01T10:00:00Z")
+            FakeRelease(100 + index, 10, "acme/app", f"v1.{index}.0", "2026-10-02T10:00:00Z")
             for index in range(30)
         ]
-        mock_github(github_api, releases)
+        mock_github(github_api, [FIRST, *releases])
         github_api.get(releases[-1].api_url).mock(
             return_value=Response(
                 403,
@@ -128,11 +172,13 @@ class TestFailures:
         )
 
         result = await container.sync.sync()
+        await container.tasks.wait()
 
         assert result.retry_after_seconds == 120
         assert "secondary rate limit" in (await sync_state(container)).last_error  # type: ignore[operator]
-        # The first batch of 25 was stored and won't be fetched again.
-        assert len(await stored_release_ids(container)) == 25
+        # The first batch of 25 was stored, won't be fetched again, and was announced.
+        assert len(await stored_release_ids(container)) == 26
+        assert [notification.title for notification in sent] == ["25 new releases"]
 
     async def test_repository_name_collision_is_resolved(
         self, container: Container, github_api: respx.MockRouter
@@ -143,12 +189,10 @@ class TestFailures:
         newcomer = FakeRelease(5, 11, "acme/app", "v9.0.0", "2026-10-04T10:00:00Z")
         mock_github(github_api, [newcomer])
 
-        result = await container.sync.sync()
-
-        assert result.error is None
+        assert (await container.sync.sync()).error is None
         async with container.session_factory() as session:
-            assert (await session.get(Repository, 11)).full_name == "acme/app"  # type: ignore[union-attr]
-            assert (await session.get(Repository, 10)).full_name == "acme/app#10"  # type: ignore[union-attr]
+            names = dict(list(await session.execute(select(Repository.id, Repository.full_name))))
+        assert names == {10: "acme/app#10", 11: "acme/app"}
 
     async def test_unexpected_errors_are_recorded(
         self, container: Container, github_api: respx.MockRouter
@@ -161,68 +205,67 @@ class TestFailures:
         assert (await sync_state(container)).last_error
 
 
-class TestConcurrency:
-    async def test_user_actions_are_not_blocked_while_fetching(
-        self, container: Container, github_api: respx.MockRouter, user_client: AsyncClient
-    ) -> None:
-        mock_github(github_api, [FIRST])
-        await container.sync.sync()
+async def test_user_actions_are_not_blocked_while_fetching(
+    container: Container, github_api: respx.MockRouter, user_client: AsyncClient
+) -> None:
+    mock_github(github_api, [FIRST])
+    await container.sync.sync()
+    released, fetching = asyncio.Event(), asyncio.Event()
 
-        released = asyncio.Event()
-        fetching = asyncio.Event()
+    async def slow_release(_: object) -> Response:
+        fetching.set()
+        await released.wait()
+        return Response(200, json=SECOND.release())
 
-        async def slow_release(_: object) -> Response:
-            fetching.set()
-            await released.wait()
-            return Response(200, json=SECOND.release())
+    mock_github(github_api, [FIRST, SECOND])
+    github_api.get(SECOND.api_url).mock(side_effect=slow_release)
+    sync = asyncio.create_task(container.sync.sync())
+    await fetching.wait()
 
-        mock_github(github_api, [FIRST, SECOND])
-        github_api.get(SECOND.api_url).mock(side_effect=slow_release)
-        sync = asyncio.create_task(container.sync.sync())
-        await fetching.wait()
+    # A write while the sync waits for GitHub must succeed immediately.
+    response = await asyncio.wait_for(
+        user_client.post(f"/api/releases/{FIRST.id}/unread"), timeout=2
+    )
+    released.set()
+    await sync
 
-        # A write while the sync waits for GitHub must succeed immediately.
-        response = await asyncio.wait_for(
-            user_client.post(f"/api/releases/{FIRST.id}/unread"), timeout=2
-        )
-        released.set()
-        await sync
-
-        assert response.status_code == 204
+    assert response.status_code == 204
 
 
-class TestAnnouncements:
-    async def test_new_releases_are_announced_after_the_first_import(
-        self,
-        container: Container,
-        github_api: respx.MockRouter,
-        sent: SentNotifications,
-    ) -> None:
-        mock_github(github_api, [FIRST])
-        await container.sync.sync()
-        await container.tasks.wait()
-        assert sent == []
+async def test_new_releases_are_announced_after_the_first_import(
+    container: Container, github_api: respx.MockRouter, sent: SentNotifications
+) -> None:
+    mock_github(github_api, [FIRST])
+    await container.sync.sync()
+    await container.tasks.wait()
+    assert sent == []
 
-        mock_github(github_api, [FIRST, SECOND])
-        await container.sync.sync()
-        await container.tasks.wait()
+    mock_github(github_api, [FIRST, SECOND])
+    await container.sync.sync()
+    await container.tasks.wait()
 
-        assert [(item.title, item.path) for item in sent] == [
-            ("acme/tool", f"/inbox?release={SECOND.id}")
-        ]
+    assert [(item.title, item.path) for item in sent] == [
+        ("acme/tool", f"/inbox?release={SECOND.id}")
+    ]
 
-    async def test_rewatching_clears_unsubscribed(
-        self, container: Container, github_api: respx.MockRouter, user_client: AsyncClient
-    ) -> None:
-        mock_github(github_api, [FIRST])
-        await container.sync.sync()
-        github_api.delete("/repos/acme/app/subscription").mock(return_value=Response(204))
-        github_api.patch(url__regex=r"/notifications/threads/.+").mock(return_value=Response(205))
-        await user_client.post("/api/repositories/10/unsubscribe")
 
-        later = FakeRelease(6, 10, "acme/app", "v1.1.0", "2099-01-01T00:00:00Z")
-        mock_github(github_api, [FIRST, later])
-        await container.sync.sync()
+async def test_watching_again_after_unsubscribing_brings_the_repository_back(
+    container: Container, github_api: respx.MockRouter, user_client: AsyncClient
+) -> None:
+    mock_github(github_api, [FIRST])
+    await container.sync.sync()
+    github_api.delete("/repositories/10/subscription").mock(return_value=Response(204))
+    github_api.patch(url__regex=r"/notifications/threads/.+").mock(return_value=Response(205))
+    await user_client.post("/api/repositories/10/unsubscribe")
+    async with container.session_factory() as session:
+        unsubscribed_at = (await session.get(Repository, 10)).unsubscribed_at  # type: ignore[union-attr]
+    assert unsubscribed_at is not None
 
-        async with container.session_factory() as session:
-            assert (await session.get(Repository, 10)).unsubscribed_at is None  # type: ignore[union-attr]
+    later = FakeRelease(
+        6, 10, "acme/app", "v1.1.0", format_timestamp(unsubscribed_at + timedelta(minutes=1))
+    )
+    mock_github(github_api, [FIRST, later])
+    await container.sync.sync()
+
+    async with container.session_factory() as session:
+        assert (await session.get(Repository, 10)).unsubscribed_at is None  # type: ignore[union-attr]

@@ -1,10 +1,4 @@
-import {
-  AlarmClockIcon,
-  ArchiveIcon,
-  EyeOffIcon,
-  InboxIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { AlarmClockIcon, ArchiveIcon, EyeOffIcon, InboxIcon, type LucideIcon } from "lucide-react"
 
 import type { View } from "@/lib/api/types"
 

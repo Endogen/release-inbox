@@ -2,28 +2,21 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import StrEnum
 
-from sqlalchemy import ColumnElement, and_, exists, func, or_
+from sqlalchemy import ColumnElement, and_, exists, false, func, or_
 
+from ghr.domain import PrereleaseMode, View
 from ghr.models import HideRule, Release, Repository
 
 _LIKE_ESCAPE = "\\"
 
 
-class View(StrEnum):
-    INBOX = "inbox"
-    SNOOZED = "snoozed"
-    READ = "read"
-    HIDDEN = "hidden"
-
-
 @dataclass(frozen=True, slots=True)
 class ViewContext:
-    """Inputs that decide which releases a view contains, besides the view itself."""
+    """Inputs that decide which view a release is in, besides its own state."""
 
     now: datetime
-    include_prereleases: bool = True
+    prereleases: PrereleaseMode = PrereleaseMode.SHOW
 
 
 def glob_matches(
@@ -41,12 +34,14 @@ def matches_pattern(pattern: ColumnElement[str] | str) -> ColumnElement[bool]:
     )
 
 
-def is_hidden() -> ColumnElement[bool]:
-    """True if any hide rule of the release's repository matches the release."""
-    return exists().where(
+def is_hidden(prereleases: PrereleaseMode = PrereleaseMode.SHOW) -> ColumnElement[bool]:
+    """True if a hide rule matches the release, or it is a pre-release and those are hidden."""
+    matches_rule = exists().where(
         HideRule.repository_id == Release.repository_id,
         matches_pattern(HideRule.pattern),
     )
+    hidden_prerelease = Release.prerelease if prereleases is PrereleaseMode.HIDE else false()
+    return or_(matches_rule, hidden_prerelease)
 
 
 def is_snoozed(now: datetime) -> ColumnElement[bool]:
@@ -54,27 +49,28 @@ def is_snoozed(now: datetime) -> ColumnElement[bool]:
 
 
 def in_view(view: View, context: ViewContext) -> ColumnElement[bool]:
-    """Filter for releases belonging to a view. Requires ``Repository`` to be joined.
+    """Filter for the releases of a view; every release is in exactly one view.
 
-    Unread releases of unsubscribed repositories only exist if the user marked them unread
-    again, so they belong in the inbox like any other unread release.
+    Hidden wins over everything else. Unread releases of unsubscribed repositories only
+    exist if the user marked them unread again, so they belong in the inbox like any other.
     """
+    hidden = is_hidden(context.prereleases)
     match view:
-        case View.INBOX:
-            condition = and_(Release.read_at.is_(None), ~is_snoozed(context.now), ~is_hidden())
-        case View.SNOOZED:
-            condition = and_(Release.read_at.is_(None), is_snoozed(context.now), ~is_hidden())
-        case View.READ:
-            condition = and_(Release.read_at.is_not(None), ~is_hidden())
         case View.HIDDEN:
-            condition = is_hidden()
-    if not context.include_prereleases and view is not View.HIDDEN:
-        condition = and_(condition, Release.prerelease.is_(False))
-    return condition
+            return hidden
+        case View.INBOX:
+            return and_(Release.read_at.is_(None), ~is_snoozed(context.now), ~hidden)
+        case View.SNOOZED:
+            return and_(Release.read_at.is_(None), is_snoozed(context.now), ~hidden)
+        case View.READ:
+            return and_(Release.read_at.is_not(None), ~hidden)
 
 
 def matches_search(query: str | None) -> ColumnElement[bool] | None:
-    """Every whitespace-separated term must appear in the repository, name, tag or notes."""
+    """Every whitespace-separated term must appear in the repository, name, tag or notes.
+
+    Requires ``Repository`` to be joined.
+    """
     terms = (query or "").split()
     if not terms:
         return None

@@ -4,8 +4,6 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
-  type InfiniteData,
-  type QueryClient,
 } from "@tanstack/react-query"
 
 import { api } from "@/lib/api/client"
@@ -18,22 +16,10 @@ import type {
   ViewCounts,
 } from "@/lib/api/types"
 
+import { removeFromList } from "./cache"
+import { readmeKeys, releaseKeys } from "./query-keys"
+
 const PAGE_SIZE = 50
-
-export const releaseKeys = {
-  all: ["releases"] as const,
-  lists: () => [...releaseKeys.all, "list"] as const,
-  list: (view: View, search: string) => [...releaseKeys.lists(), view, search] as const,
-  counts: (search: string) => [...releaseKeys.all, "counts", search] as const,
-  details: () => [...releaseKeys.all, "detail"] as const,
-  detail: (id: number) => [...releaseKeys.details(), id] as const,
-  history: (repositoryId: number) => [...releaseKeys.all, "history", repositoryId] as const,
-  unread: (repositoryId: number) => [...releaseKeys.all, "unread", repositoryId] as const,
-}
-
-export const readmeKeys = {
-  detail: (repositoryId: number) => ["readme", repositoryId] as const,
-}
 
 export function useReleaseList(view: View, search: string) {
   return useInfiniteQuery({
@@ -61,76 +47,63 @@ export function useViewCounts(search: string) {
   })
 }
 
-/** A release; while switching to another one, the previous release stays as placeholder. */
+/** A release. While switching to another one, the previous release stays as placeholder. */
 export function useRelease(id: number | null) {
   return useQuery({
     queryKey: releaseKeys.detail(id ?? 0),
     queryFn: ({ signal }) => api.get<ReleaseDetail>(`/releases/${id}`, { signal }),
     enabled: id !== null,
-    placeholderData: keepPreviousData,
+    placeholderData: id === null ? undefined : keepPreviousData,
   })
 }
 
-export function useReleaseHistory(repositoryId: number | undefined) {
+export function useReleaseHistory(repositoryId: number) {
   return useQuery({
-    queryKey: releaseKeys.history(repositoryId ?? 0),
+    queryKey: releaseKeys.history(repositoryId),
     queryFn: ({ signal }) =>
       api.get<ReleaseRef[]>(`/repositories/${repositoryId}/releases`, { signal }),
-    enabled: repositoryId !== undefined,
   })
 }
 
 /** Unread inbox releases of a repository, with notes: what's new since it was last read. */
-export function useUnreadReleases(repositoryId: number | undefined, enabled: boolean) {
+export function useUnreadReleases(repositoryId: number, enabled: boolean) {
   return useQuery({
-    queryKey: releaseKeys.unread(repositoryId ?? 0),
+    queryKey: releaseKeys.unread(repositoryId),
     queryFn: ({ signal }) =>
       api.get<ReleaseDetail[]>(`/repositories/${repositoryId}/unread`, { signal }),
-    enabled: enabled && repositoryId !== undefined,
+    enabled,
   })
 }
 
-export function useReadme(repositoryId: number | undefined, enabled: boolean) {
+export function useReadme(repositoryId: number, enabled: boolean) {
   return useQuery({
-    queryKey: readmeKeys.detail(repositoryId ?? 0),
+    queryKey: readmeKeys.detail(repositoryId),
     queryFn: ({ signal }) => api.get<Readme>(`/repositories/${repositoryId}/readme`, { signal }),
-    enabled: enabled && repositoryId !== undefined,
+    enabled,
     staleTime: 10 * 60_000,
     retry: false,
   })
 }
 
-/** Optimistically drop a repository's entry from the cached lists of a view. */
-function removeFromList(queryClient: QueryClient, view: View, repositoryId: number) {
-  queryClient.setQueriesData<InfiniteData<ReleasePage>>(
-    { queryKey: [...releaseKeys.lists(), view] },
-    (data) =>
-      data && {
-        ...data,
-        pages: data.pages.map((page) => {
-          const items = page.items.filter((item) => item.repository.id !== repositoryId)
-          return { items, total: page.total - (page.items.length - items.length) }
-        }),
-      }
-  )
-}
-
-interface ReleaseActionInput {
+export interface ReleaseActionInput {
   releaseId: number
   repositoryId: number
+  /** The view the repository's entry leaves; it's removed from that list right away. */
+  leaves: View | null
 }
 
 function useReleaseMutation<Input extends ReleaseActionInput>(
   request: (input: Input) => Promise<void>,
-  removeFrom: View | null
+  errorMessage: string
 ) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: request,
-    onMutate: async ({ repositoryId }) => {
-      if (removeFrom === null) return
+    meta: { errorMessage },
+    onMutate: async ({ repositoryId, leaves }) => {
+      if (leaves === null) return
       await queryClient.cancelQueries({ queryKey: releaseKeys.lists() })
-      removeFromList(queryClient, removeFrom, repositoryId)
+      removeFromList(queryClient, leaves, repositoryId)
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
   })
@@ -138,25 +111,36 @@ function useReleaseMutation<Input extends ReleaseActionInput>(
 
 /** Local only: GitHub has no API to mark a notification unread. */
 export function useMarkUnread() {
-  return useReleaseMutation(({ releaseId }) => api.post(`/releases/${releaseId}/unread`), "read")
+  return useReleaseMutation(
+    ({ releaseId }) => api.post(`/releases/${releaseId}/unread`),
+    "Couldn't mark as unread"
+  )
 }
 
-/** Immediate (not deferred) mark as read, used to undo "mark as unread". */
-export function useMarkReadNow() {
-  return useReleaseMutation(({ releaseId }) => api.post(`/releases/${releaseId}/read`), "inbox")
+/**
+ * Marks a release as read right away, and its older releases in ``includeOlderIn``. Marking
+ * as read from the inbox goes through the undo queue instead; this is for undoing "unread".
+ */
+export function useMarkRead() {
+  return useReleaseMutation(
+    ({ releaseId, includeOlderIn }: ReleaseActionInput & { includeOlderIn: View | null }) =>
+      api.post(`/releases/${releaseId}/read`, { include_older_in: includeOlderIn }),
+    "Couldn't mark as read"
+  )
 }
 
+/** Snoozes the release and its older releases in ``view``. */
 export function useSnooze() {
   return useReleaseMutation(
-    ({ releaseId, until }: ReleaseActionInput & { until: Date }) =>
-      api.post(`/releases/${releaseId}/snooze`, { until: until.toISOString() }),
-    "inbox"
+    ({ releaseId, until, view }: ReleaseActionInput & { until: Date; view: View }) =>
+      api.post(`/releases/${releaseId}/snooze`, { until: until.toISOString(), view }),
+    "Couldn't snooze"
   )
 }
 
 export function useUnsnooze() {
   return useReleaseMutation(
     ({ releaseId }) => api.delete(`/releases/${releaseId}/snooze`),
-    "snoozed"
+    "Couldn't unsnooze"
   )
 }

@@ -1,16 +1,11 @@
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  type InfiniteData,
-  type QueryClient,
-} from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { releaseKeys } from "@/features/releases/api"
+import { releaseKeys } from "@/features/releases/query-keys"
+import { setMutedEverywhere } from "@/features/releases/cache"
 import { api } from "@/lib/api/client"
-import type { Release, ReleaseDetail, ReleasePage, Repository } from "@/lib/api/types"
+import type { Repository } from "@/lib/api/types"
 
-export const repositoryKeys = {
+const repositoryKeys = {
   muted: ["repositories", "muted"] as const,
 }
 
@@ -32,6 +27,7 @@ export function useSetRepositoryNotifications() {
   return useMutation({
     mutationFn: ({ repositoryId, enabled }: NotificationsInput) =>
       api.put<Repository>(`/repositories/${repositoryId}/notifications`, { enabled }),
+    meta: { errorMessage: "Couldn't change notifications" },
     onMutate: async ({ repositoryId, enabled }) => {
       await queryClient.cancelQueries({ queryKey: releaseKeys.all })
       const snapshot = queryClient.getQueriesData({ queryKey: releaseKeys.all })
@@ -47,30 +43,4 @@ export function useSetRepositoryNotifications() {
         queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
       ]),
   })
-}
-
-/** Update ``notifications_muted_at`` of a repository in the cached lists and details. */
-function setMutedEverywhere(
-  queryClient: QueryClient,
-  repositoryId: number,
-  mutedAt: string | null
-) {
-  function withMute<T extends Release>(release: T): T {
-    return release.repository.id === repositoryId
-      ? { ...release, repository: { ...release.repository, notifications_muted_at: mutedAt } }
-      : release
-  }
-
-  queryClient.setQueriesData<InfiniteData<ReleasePage>>(
-    { queryKey: releaseKeys.lists() },
-    (data) =>
-      data && {
-        ...data,
-        pages: data.pages.map((page) => ({ ...page, items: page.items.map(withMute) })),
-      }
-  )
-  queryClient.setQueriesData<ReleaseDetail>(
-    { queryKey: releaseKeys.details() },
-    (data) => data && withMute(data)
-  )
 }

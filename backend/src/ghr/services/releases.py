@@ -4,7 +4,8 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
-from ghr.db import utcnow
+from ghr.domain import View
+from ghr.errors import NotFoundError
 from ghr.models import Release, Repository
 from ghr.schemas import (
     ReleaseDetail,
@@ -14,8 +15,8 @@ from ghr.schemas import (
     RepositoryOut,
     ViewCounts,
 )
-from ghr.services.filters import View, ViewContext, in_view, is_hidden, matches_search
-from ghr.services.preferences import load_preferences
+from ghr.services.filters import in_view, is_hidden, matches_search
+from ghr.services.preferences import load_view_context
 
 #: Upper bound for the combined "what's new" notes of one repository.
 MAX_UNREAD_RELEASES = 50
@@ -29,7 +30,8 @@ class ReleaseQueries:
         self, view: View, *, search: str | None, limit: int, offset: int
     ) -> ReleasePage:
         """Newest release of every repository in the view, newest first."""
-        filters = [in_view(view, await self._context())]
+        context = await load_view_context(self._session)
+        filters = [in_view(view, context)]
         if (search_filter := matches_search(search)) is not None:
             filters.append(search_filter)
 
@@ -52,7 +54,9 @@ class ReleaseQueries:
 
         total = await self._session.scalar(select(func.count()).select_from(ranked).where(latest))
         rows = await self._session.execute(
-            _select_with_repository(is_hidden().label("is_hidden"), ranked.c.group_size)
+            _select_with_repository(
+                is_hidden(context.prereleases).label("is_hidden"), ranked.c.group_size
+            )
             .join(ranked, ranked.c.release_id == Release.id)
             .where(latest)
             .order_by(Release.published_at.desc(), Release.id.desc())
@@ -67,7 +71,7 @@ class ReleaseQueries:
 
     async def count_by_view(self, *, search: str | None) -> ViewCounts:
         """Number of repositories with at least one release in each view."""
-        context = await self._context()
+        context = await load_view_context(self._session)
         search_filter = matches_search(search)
         counts: dict[View, int] = {}
         for view in View:
@@ -81,55 +85,60 @@ class ReleaseQueries:
             counts[view] = await self._session.scalar(statement) or 0
         return ViewCounts(**counts)
 
-    async def get(self, release_id: int) -> ReleaseDetail | None:
+    async def get(self, release_id: int) -> ReleaseDetail:
+        context = await load_view_context(self._session)
         row = await self._session.execute(
-            _select_with_repository(is_hidden().label("is_hidden")).where(Release.id == release_id)
+            _select_with_repository(is_hidden(context.prereleases).label("is_hidden")).where(
+                Release.id == release_id
+            )
         )
         result = row.one_or_none()
         if result is None:
-            return None
+            raise NotFoundError("Release", release_id)
         release, hidden = result
         return ReleaseDetail(**_release_fields(release, hidden), body=release.body)
 
     async def list_for_repository(self, repository_id: int) -> list[ReleaseRef]:
         """All releases of a repository, newest first."""
+        await self._require_repository(repository_id)
+        context = await load_view_context(self._session)
         rows = await self._session.execute(
-            select(Release, is_hidden().label("is_hidden"))
+            select(Release, is_hidden(context.prereleases).label("is_hidden"))
             .where(Release.repository_id == repository_id)
             .order_by(Release.published_at.desc(), Release.id.desc())
         )
-        return [
-            ReleaseRef(
-                id=release.id,
-                tag_name=release.tag_name,
-                name=release.name,
-                published_at=release.published_at,
-                read_at=release.read_at,
-                is_hidden=hidden,
-            )
-            for release, hidden in rows
-        ]
+        return [release_ref(release, hidden) for release, hidden in rows]
 
     async def list_unread_for_repository(self, repository_id: int) -> list[ReleaseDetail]:
-        """Unread releases of a repository in the inbox, newest first: what changed since the
-        user last looked."""
+        """Unread inbox releases of a repository, newest first: what changed since the user
+        last looked. These are exactly the entry's release and its ``+N older``."""
+        await self._require_repository(repository_id)
+        context = await load_view_context(self._session)
         rows = await self._session.execute(
-            _select_with_repository(is_hidden().label("is_hidden"))
-            .where(
-                Release.repository_id == repository_id,
-                in_view(View.INBOX, await self._context()),
-            )
+            _select_with_repository()
+            .where(Release.repository_id == repository_id, in_view(View.INBOX, context))
             .order_by(Release.published_at.desc(), Release.id.desc())
             .limit(MAX_UNREAD_RELEASES)
         )
         return [
-            ReleaseDetail(**_release_fields(release, hidden), body=release.body)
-            for release, hidden in rows
+            ReleaseDetail(**_release_fields(release, hidden=False), body=release.body)
+            for release in rows.scalars()
         ]
 
-    async def _context(self) -> ViewContext:
-        preferences = await load_preferences(self._session)
-        return ViewContext(now=utcnow(), include_prereleases=preferences.show_prereleases)
+    async def _require_repository(self, repository_id: int) -> None:
+        if await self._session.get(Repository, repository_id) is None:
+            raise NotFoundError("Repository", repository_id)
+
+
+def release_ref(release: Release, hidden: bool) -> ReleaseRef:
+    return ReleaseRef(
+        id=release.id,
+        tag_name=release.tag_name,
+        name=release.name,
+        published_at=release.published_at,
+        read_at=release.read_at,
+        is_hidden=hidden,
+    )
 
 
 def _select_with_repository(*columns: object) -> Select[tuple[Release, ...]]:

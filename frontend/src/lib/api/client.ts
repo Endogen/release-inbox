@@ -12,7 +12,9 @@ export class ApiError extends Error {
   }
 }
 
-type QueryValue = string | number | boolean | null | undefined
+type QueryScalar = string | number | boolean
+/** Arrays repeat the parameter (``?id=1&id=2``); empty values are left out. */
+type QueryValue = QueryScalar | readonly QueryScalar[] | null | undefined
 
 interface RequestOptions {
   query?: Record<string, QueryValue>
@@ -48,8 +50,9 @@ async function request<T>(
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query ?? {})) {
-    if (value !== null && value !== undefined && value !== "") {
-      params.set(key, String(value))
+    const values: readonly QueryScalar[] = Array.isArray(value) ? value : [value ?? ""]
+    for (const item of values) {
+      if (item !== "") params.append(key, String(item))
     }
   }
   const search = params.toString()
@@ -62,6 +65,15 @@ async function readErrorMessage(response: Response): Promise<string> {
     if (payload && typeof payload === "object" && "detail" in payload) {
       const { detail } = payload
       if (typeof detail === "string") return detail
+      // Validation errors (422) list one message per invalid field.
+      if (Array.isArray(detail)) {
+        const messages = detail.flatMap((item: unknown) =>
+          item && typeof item === "object" && "msg" in item && typeof item.msg === "string"
+            ? [item.msg]
+            : []
+        )
+        if (messages.length > 0) return messages.join(". ")
+      }
     }
   } catch {
     // Not a JSON error payload; fall back to the status text below.

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from enum import Enum
-from typing import Final, Self
+from typing import Final
 from urllib.parse import urlsplit
 
 import httpx
@@ -32,13 +32,9 @@ class GitHubError(Exception):
         self.retry_after_seconds = retry_after_seconds
 
     @property
-    def is_rate_limited(self) -> bool:
-        return self.retry_after_seconds is not None
-
-    @property
     def is_resource_unavailable(self) -> bool:
         """The resource is gone or inaccessible (for example SSO enforcement or a takedown)."""
-        return self.status_code in _RESOURCE_UNAVAILABLE and not self.is_rate_limited
+        return self.status_code in _RESOURCE_UNAVAILABLE and self.retry_after_seconds is None
 
 
 class UntrustedUrlError(GitHubError):
@@ -64,7 +60,6 @@ NOT_MODIFIED: Final = NotModified.TOKEN
 @dataclass(frozen=True, slots=True)
 class NotificationsResult:
     threads: list[NotificationThread]
-    not_modified: bool
     last_modified: str | None
     poll_interval_seconds: int | None
     #: GitHub's clock at the time of the request, used as the next ``since`` value.
@@ -102,12 +97,6 @@ class GitHubClient:
             follow_redirects=True,
         )
 
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *_: object) -> None:
-        await self.aclose()
-
     async def aclose(self) -> None:
         await self._http.aclose()
 
@@ -128,7 +117,7 @@ class GitHubClient:
         poll_interval = _parse_int(response.headers.get("X-Poll-Interval"))
         server_time = _parse_http_date(response.headers.get("Date"))
         if response.status_code == httpx.codes.NOT_MODIFIED:
-            return NotificationsResult([], True, if_modified_since, poll_interval, server_time)
+            return NotificationsResult([], if_modified_since, poll_interval, server_time)
         _raise_for_status(response)
 
         last_modified = response.headers.get("Last-Modified")
@@ -138,7 +127,12 @@ class GitHubClient:
             _raise_for_status(response)
             threads.extend(_parse_threads(response))
 
-        return NotificationsResult(threads, False, last_modified, poll_interval, server_time)
+        return NotificationsResult(threads, last_modified, poll_interval, server_time)
+
+    @staticmethod
+    def release_path(repository_id: int, release_id: int) -> str:
+        """Path of a release by ids, which keeps working when the repository is renamed."""
+        return f"/repositories/{repository_id}/releases/{release_id}"
 
     async def get_release(
         self, url: str, *, etag: str | None = None
@@ -162,13 +156,21 @@ class GitHubClient:
         response = await self._http.patch(f"/notifications/threads/{thread_id}")
         _raise_for_status(response)
 
-    async def unwatch_repository(self, full_name: str) -> None:
+    async def repository_exists(self, repository_id: int) -> bool:
+        """Whether the repository is still accessible with the token."""
+        response = await self._http.get(f"/repositories/{repository_id}")
+        if response.status_code in (httpx.codes.NOT_FOUND, httpx.codes.FORBIDDEN):
+            return False
+        _raise_for_status(response)
+        return True
+
+    async def unwatch_repository(self, repository_id: int) -> None:
         """Stop watching a repository, which ends all its notifications including releases."""
-        response = await self._http.delete(f"/repos/{full_name}/subscription")
+        response = await self._http.delete(f"/repositories/{repository_id}/subscription")
         _raise_for_status(response)
 
     async def get_readme(
-        self, full_name: str, *, etag: str | None
+        self, repository_id: int, *, etag: str | None
     ) -> ReadmeResult | NotModified | None:
         """Fetch the default README.
 
@@ -176,18 +178,15 @@ class GitHubClient:
         matches the current version.
         """
         headers = {"If-None-Match": etag} if etag else {}
-        response = await self._http.get(f"/repos/{full_name}/readme", headers=headers)
+        response = await self._http.get(f"/repositories/{repository_id}/readme", headers=headers)
         if response.status_code == httpx.codes.NOT_MODIFIED:
             return NOT_MODIFIED
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         _raise_for_status(response)
 
+        # The contents API always encodes file content in base64.
         readme = GitHubReadme.model_validate(response.json())
-        if readme.encoding != "base64":
-            raise GitHubError(
-                response.status_code, f"Unsupported README encoding {readme.encoding!r}"
-            )
         return ReadmeResult(
             content=base64.b64decode(readme.content).decode("utf-8", errors="replace"),
             html_url=readme.html_url,

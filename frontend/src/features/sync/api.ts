@@ -1,14 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 
-import { releaseKeys } from "@/features/releases/api"
 import { api } from "@/lib/api/client"
 import type { SyncStatus } from "@/lib/api/types"
+import { formatAbsolute } from "@/lib/time"
 
 export const syncKeys = {
   status: ["sync"] as const,
 }
 
-export function useSyncStatus() {
+function useSyncStatus() {
   return useQuery({
     queryKey: syncKeys.status,
     queryFn: ({ signal }) => api.get<SyncStatus>("/sync", { signal }),
@@ -16,13 +17,29 @@ export function useSyncStatus() {
   })
 }
 
-export function useSyncNow() {
+/**
+ * The sync status and a way to sync now. A requested sync runs in the background; its
+ * progress arrives through the live updates, which keep the status current.
+ */
+export function useSync() {
   const queryClient = useQueryClient()
-  return useMutation({
+  const status = useSyncStatus()
+  const request = useMutation({
     mutationFn: () => api.post<SyncStatus>("/sync"),
-    onSuccess: (status) => {
-      queryClient.setQueryData(syncKeys.status, status)
-      return queryClient.invalidateQueries({ queryKey: releaseKeys.all })
+    meta: { errorMessage: "Couldn't start a sync" },
+    onSuccess: (accepted) => {
+      queryClient.setQueryData(syncKeys.status, accepted)
+      if (!accepted.in_progress && accepted.rate_limited_until) {
+        toast.info("GitHub asked to wait", {
+          description: `The sync starts at ${formatAbsolute(accepted.rate_limited_until)}.`,
+        })
+      }
     },
   })
+
+  return {
+    status: status.data,
+    inProgress: request.isPending || (status.data?.in_progress ?? false),
+    syncNow: () => request.mutate(),
+  }
 }
