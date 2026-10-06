@@ -64,6 +64,9 @@ export function ReleaseListItem({
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="truncate">{repository.full_name}</span>
             {repository.private && <LockIcon className="size-3 shrink-0" aria-label="Private" />}
+            {repository.notifications_muted_at && (
+              <BellOffIcon className="size-3 shrink-0" aria-label="Notifications off" />
+            )}
             <RelativeTime
               date={release.published_at}
               format="short"

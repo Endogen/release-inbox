@@ -1,5 +1,7 @@
 import {
   AlertTriangleIcon,
+  BellIcon,
+  BellOffIcon,
   BellRingIcon,
   EyeOffIcon,
   RefreshCwIcon,
@@ -48,6 +50,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { useDeleteHideRule, useHideRules } from "@/features/hide-rules/api"
 import { usePushNotifications } from "@/features/notifications/use-push-notifications"
+import { useMutedRepositories, useSetRepositoryNotifications } from "@/features/repositories/api"
 import { useSyncNow, useSyncStatus } from "@/features/sync/api"
 
 interface SettingsSheetProps {
@@ -65,6 +68,7 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-8 overflow-y-auto p-4">
           <NotificationSettings />
+          <MutedRepositorySettings />
           <Separator />
           <HideRuleSettings />
           <Separator />
@@ -137,6 +141,65 @@ function NotificationSettings() {
           )}
           Send test notification
         </Button>
+      )}
+    </FieldSet>
+  )
+}
+
+function MutedRepositorySettings() {
+  const muted = useMutedRepositories()
+  const setNotifications = useSetRepositoryNotifications()
+
+  return (
+    <FieldSet>
+      <FieldLegend variant="label">Muted repositories</FieldLegend>
+      <FieldDescription>
+        Every repository you watch notifies you, including ones you watch later. Mute a repository
+        with the bell on one of its releases.
+      </FieldDescription>
+      {muted.isPending ? (
+        <Skeleton className="h-14 w-full" />
+      ) : muted.data && muted.data.length > 0 ? (
+        <ItemGroup className="gap-2">
+          {muted.data.map((repository) => (
+            <Item key={repository.id} variant="outline" size="sm">
+              <ItemMedia>
+                <RepoAvatar repository={repository} className="size-8" />
+              </ItemMedia>
+              <ItemContent className="min-w-0">
+                <ItemTitle className="w-full truncate">{repository.full_name}</ItemTitle>
+                <ItemDescription className="flex items-center gap-1">
+                  <BellOffIcon className="size-3" />
+                  No push notifications
+                </ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={
+                    setNotifications.isPending &&
+                    setNotifications.variables.repositoryId === repository.id
+                  }
+                  onClick={() =>
+                    setNotifications.mutate(
+                      { repositoryId: repository.id, enabled: true },
+                      {
+                        onSuccess: () =>
+                          toast.success(`Notifications on for ${repository.full_name}`),
+                      }
+                    )
+                  }
+                >
+                  <BellIcon data-icon="inline-start" />
+                  Unmute
+                </Button>
+              </ItemActions>
+            </Item>
+          ))}
+        </ItemGroup>
+      ) : (
+        <p className="text-sm text-muted-foreground">No repositories are muted.</p>
       )}
     </FieldSet>
   )

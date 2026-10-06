@@ -19,6 +19,10 @@ when something new ships.
   GitHub untouched. If you close the tab during that time, the action is sent immediately.
 - **Release notes and README** rendered as GitHub-flavoured markdown.
 - **Search** across repositories, release names, tags and notes.
+- **Per-repository notifications.** Every repository you watch sends push notifications,
+  including ones you start watching later. Mute a repository with the bell on one of its
+  releases (or `m`). Its releases still arrive in the inbox, just without a push. Muted
+  repositories are listed in Settings, where you can unmute them.
 - **Live updates and push notifications.** GitHub is polled every minute (at the interval GitHub
   asks for). Open tabs update instantly via server-sent events, and Web Push notifies your
   devices even when the app is closed.

@@ -18,6 +18,11 @@ class RepositoryOut(Schema):
     description: str | None
     private: bool
     unsubscribed_at: datetime | None
+    notifications_muted_at: datetime | None
+
+
+class RepositoryNotificationsUpdate(BaseModel):
+    enabled: bool
 
 
 class ReleaseOut(Schema):

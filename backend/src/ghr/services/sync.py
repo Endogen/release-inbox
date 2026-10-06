@@ -168,10 +168,15 @@ class NotificationSyncService:
         return repository
 
     async def _announce(self, session: AsyncSession, releases: list[Release]) -> None:
+        """Push new releases, except hidden ones and those of muted repositories."""
         visible_ids = set(
             await session.scalars(
-                select(Release.id).where(
-                    Release.id.in_([release.id for release in releases]), ~is_hidden()
+                select(Release.id)
+                .join(Release.repository)
+                .where(
+                    Release.id.in_([release.id for release in releases]),
+                    Repository.notifications_muted_at.is_(None),
+                    ~is_hidden(),
                 )
             )
         )

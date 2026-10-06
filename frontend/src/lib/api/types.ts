@@ -13,6 +13,8 @@ export interface Repository {
   description: string | null
   private: boolean
   unsubscribed_at: string | null
+  /** Set when push notifications for the repository are turned off. */
+  notifications_muted_at: string | null
 }
 
 export interface Release {

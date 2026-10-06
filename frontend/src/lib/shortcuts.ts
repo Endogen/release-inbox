@@ -4,6 +4,7 @@ export const SHORTCUTS: ReadonlyArray<{ keys: string[]; description: string }> =
   { keys: ["e"], description: "Mark as read" },
   { keys: ["u"], description: "Mark as unread" },
   { keys: ["h"], description: "Hide releases of this component" },
+  { keys: ["m"], description: "Turn notifications for the repository on or off" },
   { keys: ["o"], description: "Open the release on GitHub" },
   { keys: ["r"], description: "Toggle release notes and README" },
   { keys: ["1", "2", "3"], description: "Inbox, Read or Hidden" },

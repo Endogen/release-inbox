@@ -1,7 +1,9 @@
+import pytest
 import respx
 from httpx import AsyncClient, Response
 
 from ghr.container import Container
+from ghr.services.push import PushMessage
 from tests.conftest import PASSWORD, USERNAME
 from tests.github_fixtures import ISSUE_NOTIFICATION, FakeRelease, mock_github
 
@@ -209,3 +211,43 @@ class TestUnsubscribe:
 
         assert response.status_code == 502
         assert await list_ids(user_client, "inbox") == [WEB_NEW.id]
+
+
+class TestNotificationMuting:
+    async def test_toggle_and_list_muted_repositories(
+        self, container: Container, github_api: respx.MockRouter, user_client: AsyncClient
+    ) -> None:
+        await sync(container, github_api)
+
+        muted = await user_client.put("/api/repositories/10/notifications", json={"enabled": False})
+        assert muted.json()["notifications_muted_at"] is not None
+        listed = (await user_client.get("/api/repositories/muted")).json()
+        assert [repository["id"] for repository in listed] == [10]
+
+        await user_client.put("/api/repositories/10/notifications", json={"enabled": True})
+        assert (await user_client.get("/api/repositories/muted")).json() == []
+
+    async def test_muted_repositories_stay_in_the_inbox_without_a_push(
+        self,
+        container: Container,
+        github_api: respx.MockRouter,
+        user_client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        await sync(container, github_api)
+        sent: list[PushMessage] = []
+
+        async def record(message: PushMessage) -> int:
+            sent.append(message)
+            return 1
+
+        monkeypatch.setattr(container.push, "send", record)
+        await user_client.put("/api/repositories/10/notifications", json={"enabled": False})
+        muted_release = FakeRelease(5, 10, "acme/app", "web@1.2.0", "2026-10-05T10:00:00Z")
+        notified_release = FakeRelease(6, 20, "acme/tool", "v1.0.0", "2026-10-05T11:00:00Z")
+        mock_github(github_api, [*ALL_RELEASES, muted_release, notified_release])
+
+        await container.sync.sync()
+
+        assert [message.title for message in sent] == ["acme/tool"]
+        assert muted_release.id in await list_ids(user_client, "inbox")

@@ -17,6 +17,7 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Skeleton } from "@/components/ui/skeleton"
 import { HideRuleDialog } from "@/features/hide-rules/components/hide-rule-dialog"
+import { useSetRepositoryNotifications } from "@/features/repositories/api"
 import { SettingsSheet } from "@/features/settings/settings-sheet"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useHotkeys } from "@/hooks/use-hotkeys"
@@ -79,6 +80,7 @@ export function InboxPage({ username }: { username: string }) {
     : -1
 
   const markUnread = useMarkUnread()
+  const setNotifications = useSetRepositoryNotifications()
 
   /** Moves the selection off a release that is about to leave the current view. */
   function advanceFrom(release: Release) {
@@ -134,6 +136,31 @@ export function InboxPage({ username }: { username: string }) {
     })
   }
 
+  /** Applies immediately (it only affects this app); the toast offers to switch it back. */
+  function handleToggleNotifications(release: Release) {
+    const { repository } = release
+    const enabled = repository.notifications_muted_at !== null
+    const update = (value: boolean) =>
+      setNotifications.mutateAsync({ repositoryId: repository.id, enabled: value })
+
+    update(enabled).then(
+      () =>
+        toast.success(
+          enabled
+            ? `Notifications on for ${repository.full_name}`
+            : `Notifications off for ${repository.full_name}`,
+          {
+            description: enabled
+              ? "You'll get a push notification for new releases."
+              : "New releases still show up in your inbox, without a push notification.",
+            action: { label: "Undo", onClick: () => void update(!enabled) },
+          }
+        ),
+      (error: Error) =>
+        toast.error("Couldn't change notifications", { description: error.message })
+    )
+  }
+
   function moveSelection(delta: 1 | -1) {
     if (items.length === 0) return
     const index =
@@ -148,6 +175,7 @@ export function InboxPage({ username }: { username: string }) {
     e: () => selected?.read_at === null && handleMarkRead(selected),
     u: () => selected?.read_at && handleMarkUnread(selected),
     h: () => selected && setHideTarget(selected),
+    m: () => selected && handleToggleNotifications(selected),
     o: () => selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
     r: () => setContentTab((tab) => (tab === "notes" ? "readme" : "notes")),
     "1": () => route.setView("inbox"),
@@ -188,6 +216,7 @@ export function InboxPage({ username }: { username: string }) {
       onSelectRelease={route.selectRelease}
       onBack={isDesktop ? undefined : () => route.selectRelease(null)}
       actions={{
+        onToggleNotifications: () => handleToggleNotifications(selected),
         onMarkRead: () => handleMarkRead(selected),
         onMarkUnread: () => handleMarkUnread(selected),
         onHide: () => setHideTarget(selected),

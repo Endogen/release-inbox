@@ -19,6 +19,8 @@ class Repository(Base):
     description: Mapped[str | None] = mapped_column(Text)
     private: Mapped[bool] = mapped_column(Boolean, default=False)
     unsubscribed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # Push notifications are on unless muted, so newly watched repositories notify by default.
+    notifications_muted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
     releases: Mapped[list["Release"]] = relationship(
         back_populates="repository", cascade="all, delete-orphan", passive_deletes=True

@@ -1,5 +1,6 @@
 import {
   ArrowLeftIcon,
+  BellIcon,
   BellOffIcon,
   BookMarkedIcon,
   CheckIcon,
@@ -17,12 +18,14 @@ import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Release } from "@/lib/api/types"
+import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
 import { ReleaseContent, type ContentTab } from "./release-content"
 import { ReleaseVersionSelect } from "./release-version-select"
 
 export interface ReleaseDetailActions {
+  onToggleNotifications: () => void
   onMarkRead: () => void
   onMarkUnread: () => void
   onHide: () => void
@@ -80,6 +83,10 @@ export function ReleaseDetail({
               </p>
             )}
           </div>
+          <NotificationsToggle
+            muted={repository.notifications_muted_at !== null}
+            onToggle={actions.onToggleNotifications}
+          />
           <ReleaseVersionSelect
             repositoryId={repository.id}
             releaseId={release.id}
@@ -184,6 +191,30 @@ export function ReleaseDetail({
         onTabChange={onContentTabChange}
       />
     </article>
+  )
+}
+
+function NotificationsToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
+  return (
+    <ActionButton
+      hotkey="m"
+      label={
+        muted
+          ? "Notifications are off for this repository. Turn them on"
+          : "Notifications are on for this repository. Turn them off"
+      }
+    >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Notifications for this repository"
+        aria-pressed={!muted}
+        onClick={onToggle}
+        className={cn(muted && "text-muted-foreground")}
+      >
+        {muted ? <BellOffIcon /> : <BellIcon />}
+      </Button>
+    </ActionButton>
   )
 }
 

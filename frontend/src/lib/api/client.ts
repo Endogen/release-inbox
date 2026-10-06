@@ -74,5 +74,6 @@ export const api = {
     request<T>("GET", path, options),
   post: <T = void>(path: string, body?: unknown, options?: Pick<RequestOptions, "keepalive">) =>
     request<T>("POST", path, { body, ...options }),
+  put: <T = void>(path: string, body?: unknown) => request<T>("PUT", path, { body }),
   delete: <T = void>(path: string, body?: unknown) => request<T>("DELETE", path, { body }),
 }

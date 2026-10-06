@@ -13,6 +13,7 @@ from ghr.services.hide_rules import HideRuleService
 from ghr.services.inbox import InboxService
 from ghr.services.readme import ReadmeService
 from ghr.services.releases import ReleaseQueries
+from ghr.services.repositories import RepositoryService
 
 
 def get_container(request: Request) -> Container:
@@ -53,6 +54,10 @@ def get_hide_rule_service(session: SessionDep, container: ContainerDep) -> HideR
     return HideRuleService(session, container.broker)
 
 
+def get_repository_service(session: SessionDep, container: ContainerDep) -> RepositoryService:
+    return RepositoryService(session, container.broker)
+
+
 def get_readme_service(session: SessionDep, container: ContainerDep) -> ReadmeService:
     return ReadmeService(
         session, container.github, timedelta(seconds=container.settings.readme_cache_seconds)
@@ -63,3 +68,4 @@ ReleaseQueriesDep = Annotated[ReleaseQueries, Depends(get_release_queries)]
 InboxServiceDep = Annotated[InboxService, Depends(get_inbox_service)]
 HideRuleServiceDep = Annotated[HideRuleService, Depends(get_hide_rule_service)]
 ReadmeServiceDep = Annotated[ReadmeService, Depends(get_readme_service)]
+RepositoryServiceDep = Annotated[RepositoryService, Depends(get_repository_service)]
