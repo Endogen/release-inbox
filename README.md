@@ -4,6 +4,29 @@ A self-hosted inbox for the GitHub releases you watch. It shows the newest relea
 repository, with release notes, the README, AI summaries and one-click triage, and notifies you
 when something new ships.
 
+![The inbox: one entry per repository on the left, the selected release with its notes on the right](docs/screenshots/inbox-dark.png)
+
+## Screenshots
+
+**What's new** collects the notes of every unread release of a repository, here the newest
+release and its two older ones, in the light theme.
+
+![The What's new tab listing the notes of three unread releases](docs/screenshots/whats-new-light.png)
+
+**Hide a component** of a monorepo without unsubscribing. The pattern is suggested from the
+release, and the preview shows what it will hide.
+
+![The hide dialog with a suggested pattern and the matching releases](docs/screenshots/hide-component.png)
+
+**On a phone**, swipe an entry left to mark it as read or right to unsubscribe; a toast offers
+Undo. Releases open full screen.
+
+<p>
+  <img src="docs/screenshots/mobile-swipe.png" alt="Swiping an entry to the left reveals Mark as read" width="300">
+  &nbsp;
+  <img src="docs/screenshots/mobile-release.png" alt="A release opened on a phone" width="300">
+</p>
+
 ## Features
 
 - **One entry per repository.** Only the newest release is listed (`+N older` shows the rest;

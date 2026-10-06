@@ -1,4 +1,6 @@
-import { EyeOffIcon } from "lucide-react"
+import { EyeOffIcon, TagIcon } from "lucide-react"
+
+import { Badge } from "@/components/ui/badge"
 
 import {
   Select,
@@ -12,32 +14,40 @@ import {
 import { useNow } from "@/hooks/use-now"
 import { formatAge } from "@/lib/time"
 
+import type { Release } from "@/lib/api/types"
+
 import { useReleaseHistory } from "../api"
 import { releaseTitle } from "../release-title"
 
 interface ReleaseVersionSelectProps {
-  repositoryId: number
-  releaseId: number
+  release: Release
   onSelect: (releaseId: number) => void
 }
 
-/** Switches between all known releases of the repository. Hidden when there's only one. */
-export function ReleaseVersionSelect({
-  repositoryId,
-  releaseId,
-  onSelect,
-}: ReleaseVersionSelectProps) {
+/**
+ * The tag of the release, which switches between all known releases of the repository. A
+ * repository with a single release just shows the tag.
+ */
+export function ReleaseVersionSelect({ release, onSelect }: ReleaseVersionSelectProps) {
   const now = useNow()
-  const { data: releases } = useReleaseHistory(repositoryId)
-  if (!releases || releases.length < 2) return null
-  const current = releases.find((release) => release.id === releaseId)
+  const { data: releases } = useReleaseHistory(release.repository.id)
+
+  if (!releases || releases.length < 2) {
+    return (
+      <Badge variant="outline" className="font-mono">
+        <TagIcon data-icon="inline-start" />
+        {release.tag_name}
+      </Badge>
+    )
+  }
 
   return (
-    <Select value={String(releaseId)} onValueChange={(value) => onSelect(Number(value))}>
-      <SelectTrigger size="sm" aria-label="Version" className="max-w-48 font-mono">
-        <SelectValue>{current?.tag_name}</SelectValue>
+    <Select value={String(release.id)} onValueChange={(value) => onSelect(Number(value))}>
+      <SelectTrigger size="sm" aria-label="Version" className="max-w-64 font-mono">
+        <TagIcon />
+        <SelectValue>{release.tag_name}</SelectValue>
       </SelectTrigger>
-      <SelectContent position="popper" align="end" className="max-h-80">
+      <SelectContent position="popper" align="start" className="max-h-80">
         <SelectGroup>
           <SelectLabel>{releases.length} releases</SelectLabel>
           {releases.map((release) => (

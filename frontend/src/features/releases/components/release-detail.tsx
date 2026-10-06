@@ -126,11 +126,6 @@ export function ReleaseDetail({
             muted={repository.notifications_muted_at !== null}
             onToggle={actions.onToggleNotifications}
           />
-          <ReleaseVersionSelect
-            repositoryId={repository.id}
-            releaseId={release.id}
-            onSelect={onSelectRelease}
-          />
         </div>
 
         <div className="flex flex-col gap-2.5">
@@ -142,10 +137,7 @@ export function ReleaseDetail({
             {title}
           </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
-            <Badge variant="outline" className="font-mono">
-              <TagIcon data-icon="inline-start" />
-              {release.tag_name}
-            </Badge>
+            <ReleaseVersionSelect release={release} onSelect={onSelectRelease} />
             {release.breaking && (
               <Tooltip>
                 <TooltipTrigger asChild>
