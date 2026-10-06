@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
-import { SHORTCUTS } from "../shortcuts"
+import { keyLabel, SHORTCUTS } from "../shortcuts"
 
 interface ShortcutsDialogProps {
   open: boolean
@@ -31,7 +31,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
               <dd>
                 <KbdGroup>
                   {keys.map((key) => (
-                    <Kbd key={key}>{key}</Kbd>
+                    <Kbd key={key}>{keyLabel(key)}</Kbd>
                   ))}
                 </KbdGroup>
               </dd>

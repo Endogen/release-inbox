@@ -2,13 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Query, status
 
-from ghr.api.deps import InboxServiceDep, ReleaseQueriesDep
+from ghr.api.deps import InboxServiceDep, ReleaseQueriesDep, SearchQuery
 from ghr.domain import View
 from ghr.schemas import MarkReadRequest, ReleaseDetail, ReleasePage, SnoozeRequest, ViewCounts
 
 router = APIRouter(prefix="/releases", tags=["releases"])
-
-SearchQuery = Annotated[str | None, Query(max_length=200, description="Search terms")]
 
 
 @router.get("")
@@ -44,7 +42,9 @@ async def mark_read(
 
     GitHub is updated after the response is sent.
     """
-    thread_ids = await inbox.mark_read(release_id, include_older_in=payload.include_older_in)
+    thread_ids = await inbox.mark_read(
+        release_id, include_older_in=payload.include_older_in, search=payload.search
+    )
     background.add_task(inbox.mirror_read, thread_ids)
 
 
@@ -56,7 +56,7 @@ async def mark_unread(release_id: int, inbox: InboxServiceDep) -> None:
 @router.post("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)
 async def snooze(release_id: int, payload: SnoozeRequest, inbox: InboxServiceDep) -> None:
     """Hide the release and its older releases in the view until the given time."""
-    await inbox.snooze(release_id, payload.until, view=payload.view)
+    await inbox.snooze(release_id, payload.until, view=payload.view, search=payload.search)
 
 
 @router.delete("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)

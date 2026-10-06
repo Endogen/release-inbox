@@ -16,7 +16,7 @@ class ViewContext:
     """Inputs that decide which view a release is in, besides its own state."""
 
     now: datetime
-    prereleases: PrereleaseMode = PrereleaseMode.SHOW
+    prereleases: PrereleaseMode
 
 
 def glob_matches(
@@ -34,7 +34,7 @@ def matches_pattern(pattern: ColumnElement[str] | str) -> ColumnElement[bool]:
     )
 
 
-def is_hidden(prereleases: PrereleaseMode = PrereleaseMode.SHOW) -> ColumnElement[bool]:
+def is_hidden(prereleases: PrereleaseMode) -> ColumnElement[bool]:
     """True if a hide rule matches the release, or it is a pre-release and those are hidden."""
     matches_rule = exists().where(
         HideRule.repository_id == Release.repository_id,

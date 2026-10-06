@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 
 import { api } from "@/lib/api/client"
@@ -7,6 +7,7 @@ import { formatAbsolute } from "@/lib/time"
 
 export const syncKeys = {
   status: ["sync"] as const,
+  request: ["sync", "request"] as const,
 }
 
 function useSyncStatus() {
@@ -24,7 +25,9 @@ function useSyncStatus() {
 export function useSync() {
   const queryClient = useQueryClient()
   const status = useSyncStatus()
+  const requesting = useIsMutating({ mutationKey: syncKeys.request }) > 0
   const request = useMutation({
+    mutationKey: syncKeys.request,
     mutationFn: () => api.post<SyncStatus>("/sync"),
     meta: { errorMessage: "Couldn't start a sync" },
     onSuccess: (accepted) => {
@@ -36,10 +39,14 @@ export function useSync() {
       }
     },
   })
+  const inProgress = requesting || (status.data?.in_progress ?? false)
 
   return {
     status: status.data,
-    inProgress: request.isPending || (status.data?.in_progress ?? false),
-    syncNow: () => request.mutate(),
+    inProgress,
+    /** Starts a sync unless one is already running. */
+    syncNow: () => {
+      if (!inProgress) request.mutate()
+    },
   }
 }

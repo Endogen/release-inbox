@@ -12,7 +12,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ghr.errors import NotFoundError
+from ghr.errors import ConflictError, InvalidRequestError, NotFoundError
 from ghr.models import Release, Summary
 from ghr.schemas import SummaryOut
 
@@ -125,7 +125,7 @@ class SummaryService:
 
     def _require_summarizer(self) -> Summarizer:
         if self._summarizer is None:
-            raise SummaryError("Summaries aren't configured. Set GHR_ANTHROPIC_API_KEY.")
+            raise ConflictError("Summaries aren't configured. Set GHR_ANTHROPIC_API_KEY.")
         return self._summarizer
 
     async def _load_notes(self, release_ids: Sequence[int]) -> list[ReleaseNotes]:
@@ -134,12 +134,12 @@ class SummaryService:
                 select(Release)
                 .options(selectinload(Release.repository))
                 .where(Release.id.in_(release_ids))
-                .order_by(Release.published_at.desc())
+                .order_by(Release.published_at.desc(), Release.id.desc())
             )
         )
         missing = set(release_ids) - {release.id for release in releases}
         if missing:
-            raise NotFoundError("Release", sorted(missing)[0])
+            raise NotFoundError("Release", min(missing))
         return [_notes(release) for release in releases]
 
 
@@ -160,7 +160,9 @@ def _format_notes(notes: Sequence[ReleaseNotes]) -> str:
     ]
     text = "\n\n---\n\n".join(sections)
     if len(text) > _MAX_NOTES_CHARACTERS:
-        raise SummaryError("These release notes are too long to summarize. Pick fewer releases.")
+        raise InvalidRequestError(
+            "These release notes are too long to summarize. Pick fewer releases."
+        )
     return f"<release_notes>\n{text}\n</release_notes>"
 
 

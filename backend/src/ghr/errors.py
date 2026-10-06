@@ -4,9 +4,11 @@
 class NotFoundError(Exception):
     def __init__(self, entity: str, identifier: object) -> None:
         super().__init__(f"{entity} {identifier} not found")
-        self.entity = entity
-        self.identifier = identifier
 
 
 class ConflictError(Exception):
-    pass
+    """The request conflicts with the current state or configuration."""
+
+
+class InvalidRequestError(Exception):
+    """The request is well-formed but can't be processed as asked."""

@@ -29,7 +29,7 @@ export function SyncButton() {
           size="icon"
           aria-label="Sync now"
           aria-busy={inProgress}
-          onClick={inProgress ? undefined : syncNow}
+          onClick={syncNow}
         >
           {failed ? (
             <TriangleAlertIcon className="text-destructive" />

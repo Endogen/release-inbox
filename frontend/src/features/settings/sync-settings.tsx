@@ -33,7 +33,7 @@ export function SyncSettings() {
         size="sm"
         className="self-start"
         aria-busy={inProgress}
-        onClick={inProgress ? undefined : syncNow}
+        onClick={syncNow}
       >
         {inProgress ? (
           <Spinner data-icon="inline-start" />

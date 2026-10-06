@@ -1,4 +1,4 @@
-import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon, ZapIcon } from "lucide-react"
+import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon } from "lucide-react"
 import { memo, type Ref } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
@@ -12,6 +12,7 @@ import { formatAbsolute } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
+import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 
 export interface ReleaseRowHandlers {
   onSelect: (release: ReleaseListItemData) => void
@@ -88,17 +89,8 @@ export const ReleaseListItem = memo(function ReleaseListItem({
           </div>
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{title}</span>
-            {release.breaking && (
-              <Badge variant="destructive" className="shrink-0">
-                <ZapIcon data-icon="inline-start" />
-                Breaking
-              </Badge>
-            )}
-            {release.prerelease && (
-              <Badge variant="outline" className="shrink-0">
-                Pre-release
-              </Badge>
-            )}
+            {release.breaking && <BreakingBadge />}
+            {release.prerelease && <PrereleaseBadge />}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             {showTag && <span className="truncate font-mono">{release.tag_name}</span>}

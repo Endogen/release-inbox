@@ -18,23 +18,28 @@ from ghr import models  # noqa: F401  # registers all tables
 from ghr.cli import alembic_config, cli
 from ghr.db import Base, utcnow
 from ghr.scheduler import SyncScheduler
-from ghr.services.sync import SyncResult
+from ghr.services.sync import RefreshResult, SyncResult
 from tests.conftest import make_settings, migrate
 
 
 class FakeSync:
-    def __init__(self, result: SyncResult) -> None:
+    def __init__(self, result: SyncResult, refresh: RefreshResult | None = None) -> None:
         self.result = result
+        self.refresh = refresh or RefreshResult(0)
         self.syncs = 0
         self.refreshes = 0
+        #: Set to make syncs wait until it is set.
+        self.release: asyncio.Event | None = None
 
     async def sync(self) -> SyncResult:
         self.syncs += 1
+        if self.release is not None:
+            await self.release.wait()
         return self.result
 
-    async def refresh_recent(self, *, published_within: timedelta) -> int:
+    async def refresh_recent(self, *, published_within: timedelta) -> RefreshResult:
         self.refreshes += 1
-        return 0
+        return self.refresh
 
 
 class FakeSnoozes:
@@ -42,8 +47,10 @@ class FakeSnoozes:
         return 0
 
 
-def scheduler(result: SyncResult) -> tuple[SyncScheduler, FakeSync]:
-    sync = FakeSync(result)
+def scheduler(
+    result: SyncResult, refresh: RefreshResult | None = None
+) -> tuple[SyncScheduler, FakeSync]:
+    sync = FakeSync(result, refresh)
     instance = SyncScheduler(
         sync,  # type: ignore[arg-type]
         FakeSnoozes(),  # type: ignore[arg-type]
@@ -80,6 +87,28 @@ class TestScheduler:
         try:
             await asyncio.sleep(0.05)
             assert instance.request_sync() is True
+            await asyncio.sleep(0.05)
+        finally:
+            await instance.stop()
+
+        assert sync.syncs == 2
+
+    async def test_backs_off_after_a_rate_limit_while_refreshing(self) -> None:
+        instance, _ = scheduler(
+            SyncResult(0, poll_interval_seconds=60), RefreshResult(0, retry_after_seconds=900)
+        )
+
+        assert await instance.run_once() == 900
+        assert instance.backing_off
+
+    async def test_a_sync_requested_during_a_sync_runs_afterwards(self) -> None:
+        instance, sync = scheduler(SyncResult(0, poll_interval_seconds=3600))
+        sync.release = asyncio.Event()
+        instance.start()
+        try:
+            await asyncio.sleep(0.05)
+            instance.request_sync()  # while the first sync is still running
+            sync.release.set()
             await asyncio.sleep(0.05)
         finally:
             await instance.stop()

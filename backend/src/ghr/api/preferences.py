@@ -1,18 +1,18 @@
 from fastapi import APIRouter
 
 from ghr.api.deps import PreferencesServiceDep
-from ghr.schemas import PreferencesOut, PreferencesUpdate
+from ghr.schemas import PreferenceSettings
 
 router = APIRouter(prefix="/preferences", tags=["preferences"])
 
 
 @router.get("")
-async def get_preferences(preferences: PreferencesServiceDep) -> PreferencesOut:
+async def get_preferences(preferences: PreferencesServiceDep) -> PreferenceSettings:
     return await preferences.get()
 
 
 @router.patch("")
 async def update_preferences(
-    changes: PreferencesUpdate, preferences: PreferencesServiceDep
-) -> PreferencesOut:
+    changes: PreferenceSettings, preferences: PreferencesServiceDep
+) -> PreferenceSettings:
     return await preferences.update(changes)

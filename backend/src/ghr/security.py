@@ -4,7 +4,7 @@ and a same-origin check for state-changing requests."""
 import hashlib
 import hmac
 import time
-from collections import defaultdict, deque
+from collections import deque
 
 from pwdlib import PasswordHash
 from pwdlib.hashers.argon2 import Argon2Hasher
@@ -62,7 +62,7 @@ class LoginThrottle:
     def __init__(self, *, max_failures: int, window_seconds: int) -> None:
         self._max_failures = max_failures
         self._window = window_seconds
-        self._failures: defaultdict[str, deque[float]] = defaultdict(deque)
+        self._failures: dict[str, deque[float]] = {}
 
     def retry_after(self, client: str) -> int | None:
         """Seconds until the client may try again, or ``None`` if it isn't blocked."""
@@ -72,14 +72,18 @@ class LoginThrottle:
         return max(1, int(failures[0] + self._window - time.monotonic()) + 1)
 
     def record_failure(self, client: str) -> None:
-        self._recent(client).append(time.monotonic())
+        self._failures.setdefault(client, deque()).append(time.monotonic())
 
     def reset(self, client: str) -> None:
         self._failures.pop(client, None)
 
     def _recent(self, client: str) -> deque[float]:
-        failures = self._failures[client]
+        failures = self._failures.get(client)
+        if failures is None:
+            return deque()
         cutoff = time.monotonic() - self._window
         while failures and failures[0] <= cutoff:
             failures.popleft()
+        if not failures:
+            del self._failures[client]
         return failures

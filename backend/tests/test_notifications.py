@@ -1,6 +1,8 @@
 """Notification channels, what gets announced, and the push subscription API."""
 
+import base64
 import json
+import os
 from collections.abc import AsyncIterator
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,6 +10,8 @@ from types import SimpleNamespace
 import httpx
 import pytest
 import respx
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from httpx import AsyncClient, Response
 from pywebpush import WebPushException
 from sqlalchemy import select
@@ -229,11 +233,18 @@ async def push_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     await container.aclose()
 
 
-async def test_push_subscription_api(push_client: AsyncClient) -> None:
-    subscription = {
-        "endpoint": "https://push.example/device",
-        "keys": {"p256dh": "key", "auth": "secret"},
+def push_keys() -> dict[str, str]:
+    """Keys like a browser's: an uncompressed P-256 public key and a 16-byte secret."""
+    public_key = ec.generate_private_key(ec.SECP256R1()).public_key()
+    point = public_key.public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+    return {
+        "p256dh": base64.urlsafe_b64encode(point).rstrip(b"=").decode(),
+        "auth": base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode(),
     }
+
+
+async def test_push_subscription_api(push_client: AsyncClient) -> None:
+    subscription = {"endpoint": "https://push.example/device", "keys": push_keys()}
 
     config = (await push_client.get("/api/push/config")).json()
     subscribed = await push_client.post("/api/push/subscriptions", json=subscription)
@@ -246,10 +257,28 @@ async def test_push_subscription_api(push_client: AsyncClient) -> None:
     assert [subscribed.status_code, resubscribed.status_code, removed.status_code] == [204] * 3
 
 
+@pytest.mark.parametrize(
+    "keys",
+    [
+        {"p256dh": "not base64!", "auth": "AAAAAAAAAAAAAAAAAAAAAA"},
+        {"p256dh": "BAAA", "auth": "AAAAAAAAAAAAAAAAAAAAAA"},
+        {"auth": "short"},
+    ],
+)
+async def test_rejects_malformed_push_keys(push_client: AsyncClient, keys: dict[str, str]) -> None:
+    valid = push_keys()
+    response = await push_client.post(
+        "/api/push/subscriptions",
+        json={"endpoint": "https://push.example/device", "keys": {**valid, **keys}},
+    )
+
+    assert response.status_code == 422
+
+
 async def test_push_subscriptions_need_server_keys(user_client: AsyncClient) -> None:
     response = await user_client.post(
         "/api/push/subscriptions",
-        json={"endpoint": "https://push.example/device", "keys": {"p256dh": "k", "auth": "a"}},
+        json={"endpoint": "https://push.example/device", "keys": push_keys()},
     )
 
     assert (await user_client.get("/api/push/config")).json() == {

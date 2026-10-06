@@ -34,7 +34,9 @@ export function useReleaseList(view: View, search: string) {
       const loaded = pages.reduce((sum, page) => sum + page.items.length, 0)
       return loaded < lastPage.total ? loaded : undefined
     },
-    placeholderData: keepPreviousData,
+    // Keep the list while the search changes, but don't show another view's entries.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === view ? previous : undefined,
   })
 }
 
@@ -65,21 +67,25 @@ export function useReleaseHistory(repositoryId: number) {
   })
 }
 
-/** Unread inbox releases of a repository, with notes: what's new since it was last read. */
-export function useUnreadReleases(repositoryId: number, enabled: boolean) {
+/**
+ * Unread inbox releases of a repository, with notes: what's new since it was last read. With
+ * the list's search, these are the entry and its ``+N older``.
+ */
+export function useUnreadReleases(repositoryId: number, search: string) {
   return useQuery({
-    queryKey: releaseKeys.unread(repositoryId),
+    queryKey: releaseKeys.unread(repositoryId, search),
     queryFn: ({ signal }) =>
-      api.get<ReleaseDetail[]>(`/repositories/${repositoryId}/unread`, { signal }),
-    enabled,
+      api.get<ReleaseDetail[]>(`/repositories/${repositoryId}/unread`, {
+        query: { q: search },
+        signal,
+      }),
   })
 }
 
-export function useReadme(repositoryId: number, enabled: boolean) {
+export function useReadme(repositoryId: number) {
   return useQuery({
     queryKey: readmeKeys.detail(repositoryId),
     queryFn: ({ signal }) => api.get<Readme>(`/repositories/${repositoryId}/readme`, { signal }),
-    enabled,
     staleTime: 10 * 60_000,
     retry: false,
   })
@@ -118,22 +124,30 @@ export function useMarkUnread() {
 }
 
 /**
- * Marks a release as read right away, and its older releases in ``includeOlderIn``. Marking
- * as read from the inbox goes through the undo queue instead; this is for undoing "unread".
+ * Marks only this release as read, right away. Marking an entry as read goes through the undo
+ * queue instead; this undoes "mark as unread".
  */
 export function useMarkRead() {
   return useReleaseMutation(
-    ({ releaseId, includeOlderIn }: ReleaseActionInput & { includeOlderIn: View | null }) =>
-      api.post(`/releases/${releaseId}/read`, { include_older_in: includeOlderIn }),
+    ({ releaseId }) => api.post(`/releases/${releaseId}/read`, { include_older_in: null }),
     "Couldn't mark as read"
   )
 }
 
-/** Snoozes the release and its older releases in ``view``. */
+/** Snoozes the release and its older releases in ``view`` that match ``search``. */
 export function useSnooze() {
   return useReleaseMutation(
-    ({ releaseId, until, view }: ReleaseActionInput & { until: Date; view: View }) =>
-      api.post(`/releases/${releaseId}/snooze`, { until: until.toISOString(), view }),
+    ({
+      releaseId,
+      until,
+      view,
+      search,
+    }: ReleaseActionInput & { until: Date; view: View; search: string }) =>
+      api.post(`/releases/${releaseId}/snooze`, {
+        until: until.toISOString(),
+        view,
+        search: search || null,
+      }),
     "Couldn't snooze"
   )
 }

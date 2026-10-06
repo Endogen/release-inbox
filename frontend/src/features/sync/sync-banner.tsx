@@ -33,12 +33,7 @@ export function SyncBanner() {
         {status.last_error} New releases show up once it works again; it retries by itself.
       </AlertDescription>
       <AlertAction>
-        <Button
-          size="xs"
-          variant="outline"
-          aria-busy={inProgress}
-          onClick={inProgress ? undefined : syncNow}
-        >
+        <Button size="xs" variant="outline" aria-busy={inProgress} onClick={syncNow}>
           Retry
         </Button>
       </AlertAction>

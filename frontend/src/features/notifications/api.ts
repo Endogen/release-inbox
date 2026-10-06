@@ -3,9 +3,13 @@ import { useMutation, useQuery } from "@tanstack/react-query"
 import { api } from "@/lib/api/client"
 import type { NotificationChannel, NotificationTestResult } from "@/lib/api/types"
 
+const notificationKeys = {
+  channels: ["notifications", "channels"] as const,
+}
+
 export function useNotificationChannels() {
   return useQuery({
-    queryKey: ["notifications", "channels"],
+    queryKey: notificationKeys.channels,
     queryFn: ({ signal }) => api.get<NotificationChannel[]>("/notifications/channels", { signal }),
     staleTime: Infinity,
   })

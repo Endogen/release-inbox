@@ -4,7 +4,7 @@ import type { ReactNode } from "react"
 import { BrandMark } from "@/components/brand-mark"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { UserMenu } from "@/app/user-menu"
+import { UserMenu } from "./user-menu"
 import { SyncButton } from "@/features/sync/sync-button"
 
 interface AppHeaderProps {

@@ -48,7 +48,7 @@ async def test_picks_up_edits_conditionally_and_only_for_recent_releases(
     )
     calls_before = len(github_api.calls)
 
-    assert await container.sync.refresh_recent(published_within=WINDOW) == 1
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 1
 
     release = await load(container, imported.id)
     assert release is not None
@@ -63,7 +63,7 @@ async def test_unchanged_releases_are_cheap(
 ) -> None:
     github_api.get(imported.refresh_url).mock(return_value=Response(304))
 
-    assert await container.sync.refresh_recent(published_within=WINDOW) == 0
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 0
 
 
 async def test_promotion_to_a_release_is_announced(
@@ -87,7 +87,7 @@ async def test_deletes_releases_only_when_the_repository_is_still_there(
     github_api.get(imported.refresh_url).mock(return_value=Response(404))
     github_api.get("/repositories/10").mock(return_value=Response(200, json={"id": 10}))
 
-    assert await container.sync.refresh_recent(published_within=WINDOW) == 1
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 1
     assert await load(container, imported.id) is None
 
 
@@ -109,7 +109,7 @@ async def test_keeps_releases_that_are_only_inaccessible(
     if repository_status is not None:
         github_api.get("/repositories/10").mock(return_value=Response(repository_status))
 
-    assert await container.sync.refresh_recent(published_within=WINDOW) == 0
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 0
     assert await load(container, imported.id) is not None
 
 
@@ -118,7 +118,7 @@ async def test_unexpected_responses_are_skipped(
 ) -> None:
     github_api.get(imported.refresh_url).mock(return_value=Response(200, json={"id": 10}))
 
-    assert await container.sync.refresh_recent(published_within=WINDOW) == 0
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 0
     assert await load(container, imported.id) is not None
 
 

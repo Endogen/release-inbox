@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient, type QueryFilters } from "@tanstack/react-query"
 
 import { releaseKeys } from "@/features/releases/query-keys"
 import { setMutedEverywhere } from "@/features/releases/cache"
@@ -29,8 +29,12 @@ export function useSetRepositoryNotifications() {
       api.put<Repository>(`/repositories/${repositoryId}/notifications`, { enabled }),
     meta: { errorMessage: "Couldn't change notifications" },
     onMutate: async ({ repositoryId, enabled }) => {
-      await queryClient.cancelQueries({ queryKey: releaseKeys.all })
-      const snapshot = queryClient.getQueriesData({ queryKey: releaseKeys.all })
+      const touched: QueryFilters[] = [
+        { queryKey: releaseKeys.lists() },
+        { queryKey: releaseKeys.details() },
+      ]
+      await Promise.all(touched.map((filters) => queryClient.cancelQueries(filters)))
+      const snapshot = touched.flatMap((filters) => queryClient.getQueriesData(filters))
       setMutedEverywhere(queryClient, repositoryId, enabled ? null : new Date().toISOString())
       return { snapshot }
     },

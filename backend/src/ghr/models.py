@@ -32,13 +32,6 @@ class Repository(Base):
     # Push notifications are on unless muted, so newly watched repositories notify by default.
     notifications_muted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
-    releases: Mapped[list["Release"]] = relationship(
-        back_populates="repository", cascade="all, delete-orphan", passive_deletes=True
-    )
-    hide_rules: Mapped[list["HideRule"]] = relationship(
-        back_populates="repository", cascade="all, delete-orphan", passive_deletes=True
-    )
-
 
 class Release(Base):
     __tablename__ = "releases"
@@ -68,7 +61,7 @@ class Release(Base):
     #: ETag of the last fetch, so refreshes are conditional requests.
     etag: Mapped[str | None] = mapped_column(String(255))
 
-    repository: Mapped[Repository] = relationship(back_populates="releases")
+    repository: Mapped[Repository] = relationship()
 
 
 class HideRule(Base):
@@ -83,7 +76,7 @@ class HideRule(Base):
     pattern: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow)
 
-    repository: Mapped[Repository] = relationship(back_populates="hide_rules")
+    repository: Mapped[Repository] = relationship()
 
 
 class Readme(Base):

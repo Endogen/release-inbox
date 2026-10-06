@@ -90,6 +90,23 @@ class TestMarkRead:
         assert response.status_code == 204
         assert TOOL.id in await list_ids(user_client, "read")
 
+    async def test_a_search_narrows_what_the_entry_covers(
+        self, synced: respx.Route, user_client: AsyncClient
+    ) -> None:
+        # Searching "web" lists web@1.1.0 with "+1 older" (web@1.0.0), not the docs release.
+        listed = (await user_client.get("/api/releases", params={"q": "web"})).json()
+        entry = next(item for item in listed["items"] if item["repository"]["id"] == 10)
+        unread = await user_client.get("/api/repositories/10/unread", params={"q": "web"})
+
+        await user_client.post(
+            f"/api/releases/{WEB_NEW.id}/read", json={"include_older_in": "inbox", "search": "web"}
+        )
+
+        assert entry["older_count"] == 1
+        assert [item["id"] for item in unread.json()] == [WEB_NEW.id, WEB_OLD.id]
+        assert set(await list_ids(user_client, "read")) == {WEB_NEW.id}
+        assert DOCS.id in await list_ids(user_client, "inbox")
+
     async def test_mark_unread_moves_it_back(
         self, synced: respx.Route, user_client: AsyncClient
     ) -> None:
@@ -137,6 +154,15 @@ class TestSnooze:
         )
 
         assert (hidden.status_code, read.status_code, past.status_code) == (409, 409, 422)
+
+    async def test_only_unread_views_can_be_snoozed_from(
+        self, synced: respx.Route, user_client: AsyncClient
+    ) -> None:
+        for view in ("read", "hidden"):
+            response = await user_client.post(
+                f"/api/releases/{TOOL.id}/snooze", json={"until": in_hours(1), "view": view}
+            )
+            assert response.status_code == 422, view
 
     async def test_expired_snoozes_come_back_with_a_reminder(
         self,
@@ -190,6 +216,18 @@ class TestUnsubscribe:
         assert await list_ids(user_client, "inbox") == [TOOL.id]
         detail = (await user_client.get(f"/api/releases/{WEB_NEW.id}")).json()
         assert detail["repository"]["unsubscribed_at"] is not None
+
+    async def test_a_deleted_repository_can_still_be_unsubscribed(
+        self, github_api: respx.MockRouter, synced: respx.Route, user_client: AsyncClient
+    ) -> None:
+        github_api.delete("/repositories/10/subscription").mock(
+            return_value=Response(404, json={"message": "Not Found"})
+        )
+
+        response = await user_client.post("/api/repositories/10/unsubscribe")
+
+        assert response.status_code == 204
+        assert await list_ids(user_client, "inbox") == [TOOL.id]
 
     async def test_reports_github_errors_and_changes_nothing(
         self, github_api: respx.MockRouter, synced: respx.Route, user_client: AsyncClient

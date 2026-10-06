@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
-import { releaseKeys } from "@/features/releases/query-keys"
+import { releaseKeys } from "../query-keys"
 import { api } from "@/lib/api/client"
 
 import { DeferredActionsContext } from "./context"
@@ -19,7 +19,8 @@ export function DeferredActionsProvider({ children }: { children: ReactNode }) {
       new DeferredActionQueue({
         commit: async (action, { keepalive }) => {
           await api.post(action.path, action.body, { keepalive })
-          if (!keepalive) await queryClient.invalidateQueries({ queryKey: releaseKeys.all })
+          // Also after a flush on switching tabs: the entry would otherwise show again.
+          await queryClient.invalidateQueries({ queryKey: releaseKeys.all })
         },
         onScheduled: (action, queue) =>
           toast(action.message, {

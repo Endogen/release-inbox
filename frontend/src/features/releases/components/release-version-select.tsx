@@ -50,15 +50,17 @@ export function ReleaseVersionSelect({ release, onSelect }: ReleaseVersionSelect
       <SelectContent position="popper" align="start" className="max-h-80">
         <SelectGroup>
           <SelectLabel>{releases.length} releases</SelectLabel>
-          {releases.map((release) => (
-            <SelectItem key={release.id} value={String(release.id)}>
-              <span className="truncate">{releaseTitle(release)}</span>
-              {release.read_at === null && (
-                <span aria-label="Unread" className="size-1.5 shrink-0 rounded-full bg-primary" />
+          {releases.map((item) => (
+            <SelectItem key={item.id} value={String(item.id)}>
+              <span className="truncate">{releaseTitle(item)}</span>
+              {item.read_at === null && (
+                <span className="size-1.5 shrink-0 rounded-full bg-primary">
+                  <span className="sr-only">Unread</span>
+                </span>
               )}
-              {release.is_hidden && <EyeOffIcon aria-label="Hidden" />}
+              {item.is_hidden && <EyeOffIcon role="img" aria-label="Hidden" />}
               <span className="ml-auto pl-3 text-xs text-muted-foreground tabular-nums">
-                {formatAge(release.published_at, now)}
+                {formatAge(item.published_at, now)}
               </span>
             </SelectItem>
           ))}

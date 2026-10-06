@@ -12,6 +12,7 @@ from httpx import AsyncClient, Response
 
 from ghr.config import Settings
 from ghr.container import Container
+from ghr.errors import InvalidRequestError
 from ghr.services.summaries import ClaudeSummarizer, ReleaseNotes, SummaryError
 from tests.conftest import migrate
 from tests.github_fixtures import FakeRelease, mock_github
@@ -84,7 +85,7 @@ async def test_missing_configuration(user_client: AsyncClient) -> None:
 
     response = await user_client.post("/api/summaries", json={"release_ids": [1]})
 
-    assert response.status_code == 503
+    assert response.status_code == 409
     assert "GHR_ANTHROPIC_API_KEY" in response.json()["detail"]
 
 
@@ -150,5 +151,5 @@ async def test_very_long_notes_are_rejected_instead_of_truncated() -> None:
     stub_claude(summarizer, SimpleNamespace(stop_reason="end_turn", content=[]))
     huge = [replace(NOTES[0], body="x" * 500_000)]
 
-    with pytest.raises(SummaryError, match="too long"):
+    with pytest.raises(InvalidRequestError, match="too long"):
         await summarizer.summarize(huge)

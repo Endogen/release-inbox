@@ -29,6 +29,16 @@ describe("snoozeOptions", () => {
     expect(byId(local(2026, 10, 12, 8))["next-week"]).toEqual(local(2026, 10, 19, 9))
   })
 
+  it("on Sunday, tomorrow already is next week", () => {
+    const options = snoozeOptions(local(2026, 10, 11, 10))
+
+    expect(options.map((option) => option.id)).toEqual(["later-today", "tomorrow"])
+  })
+
+  it("leaves out later today when it would be after midnight", () => {
+    expect(byId(local(2026, 10, 6, 22))["later-today"]).toBeUndefined()
+  })
+
   it("handles month ends", () => {
     expect(byId(local(2026, 10, 31, 23)).tomorrow).toEqual(local(2026, 11, 1, 9))
   })

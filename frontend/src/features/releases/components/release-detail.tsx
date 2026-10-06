@@ -10,7 +10,6 @@ import {
   InboxIcon,
   LockIcon,
   TagIcon,
-  ZapIcon,
 } from "lucide-react"
 import { useEffect, useRef, type ReactNode } from "react"
 
@@ -26,7 +25,9 @@ import type { Release } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
 
 import { releaseTitle } from "../release-title"
+import { HOTKEYS, keyLabel } from "../shortcuts"
 import { canSnooze, viewOf } from "../release-view"
+import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 import { ReleaseContent, type ContentTab } from "./release-content"
 import { ReleaseVersionSelect } from "./release-version-select"
 import { SnoozeMenu } from "./snooze-menu"
@@ -52,6 +53,8 @@ interface ReleaseDetailProps {
   body: string | null | undefined
   /** Unread releases of the entry, shown under "What's new"; 0 hides the tab. */
   whatsNewCount: number
+  /** The list's search, which narrows what the entry stands for. */
+  search: string
   contentTab: ContentTab
   onContentTabChange: (tab: ContentTab) => void
   onSelectRelease: (releaseId: number) => void
@@ -68,6 +71,7 @@ export function ReleaseDetail({
   release,
   body,
   whatsNewCount,
+  search,
   contentTab,
   onContentTabChange,
   onSelectRelease,
@@ -89,10 +93,7 @@ export function ReleaseDetail({
   const view = viewOf(release, now)
 
   return (
-    <article
-      key={release.repository.id}
-      className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in slide-in-from-bottom-1"
-    >
+    <article className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in slide-in-from-bottom-1">
       <header className="flex flex-col gap-5 border-b px-6 pt-5 pb-5">
         <div className="flex items-center gap-3">
           {onBack && (
@@ -141,17 +142,14 @@ export function ReleaseDetail({
             {release.breaking && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="destructive">
-                    <ZapIcon data-icon="inline-start" />
-                    Breaking
-                  </Badge>
+                  <BreakingBadge />
                 </TooltipTrigger>
                 <TooltipContent>
                   The notes mention breaking changes, or this is a new major version
                 </TooltipContent>
               </Tooltip>
             )}
-            {release.prerelease && <Badge variant="secondary">Pre-release</Badge>}
+            {release.prerelease && <PrereleaseBadge />}
             {view === "snoozed" && release.snoozed_until && (
               <Badge variant="secondary">
                 <AlarmClockIcon data-icon="inline-start" />
@@ -188,7 +186,7 @@ export function ReleaseDetail({
 
         <div className="flex flex-wrap items-center gap-2">
           {release.read_at === null ? (
-            <ActionButton hotkey="e" label="Mark this and older releases as read">
+            <ActionButton hotkey={HOTKEYS.markRead} label="Mark this and older releases as read">
               <Button size="sm" onClick={actions.onMarkRead} aria-busy={pending.markRead}>
                 {pending.markRead ? (
                   <Spinner data-icon="inline-start" />
@@ -199,7 +197,7 @@ export function ReleaseDetail({
               </Button>
             </ActionButton>
           ) : (
-            <ActionButton hotkey="u" label="Move back to the inbox">
+            <ActionButton hotkey={HOTKEYS.markUnread} label="Move back to the inbox">
               <Button size="sm" variant="secondary" onClick={actions.onMarkUnread}>
                 <InboxIcon data-icon="inline-start" />
                 Mark as unread
@@ -220,13 +218,13 @@ export function ReleaseDetail({
                 onOpenChange={onSnoozeMenuOpenChange}
                 onSnooze={actions.onSnooze}
                 renderTrigger={(trigger) => (
-                  <ActionButton hotkey="s" label="Put it aside until later">
+                  <ActionButton hotkey={HOTKEYS.snooze} label="Put it aside until later">
                     {trigger}
                   </ActionButton>
                 )}
               />
             ))}
-          <ActionButton hotkey="h" label="Hide releases of this component">
+          <ActionButton hotkey={HOTKEYS.hide} label="Hide releases of this component">
             <Button size="sm" variant="outline" onClick={actions.onHide}>
               <EyeOffIcon data-icon="inline-start" />
               Hide…
@@ -251,7 +249,7 @@ export function ReleaseDetail({
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <ActionButton hotkey="o" label="Open the release on GitHub">
+            <ActionButton hotkey={HOTKEYS.open} label="Open the release on GitHub">
               <Button size="sm" variant="ghost" asChild>
                 <a href={release.html_url} target="_blank" rel="noopener noreferrer">
                   <TagIcon data-icon="inline-start" />
@@ -275,6 +273,7 @@ export function ReleaseDetail({
         release={release}
         body={body}
         whatsNewCount={whatsNewCount}
+        search={search}
         tab={contentTab}
         onTabChange={onContentTabChange}
       />
@@ -285,7 +284,7 @@ export function ReleaseDetail({
 function NotificationsToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   return (
     <ActionButton
-      hotkey="m"
+      hotkey={HOTKEYS.notifications}
       label={
         muted
           ? "Notifications are off for this repository. Turn them on"
@@ -319,7 +318,7 @@ function ActionButton({
       <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent>
         {label}
-        {hotkey && <Kbd>{hotkey}</Kbd>}
+        {hotkey && <Kbd>{keyLabel(hotkey)}</Kbd>}
       </TooltipContent>
     </Tooltip>
   )

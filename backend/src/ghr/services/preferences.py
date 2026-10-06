@@ -6,7 +6,7 @@ from ghr.db import utcnow
 from ghr.domain import PrereleaseMode
 from ghr.events import Event, EventBroker
 from ghr.models import Preferences
-from ghr.schemas import PreferencesOut, PreferencesUpdate
+from ghr.schemas import PreferenceSettings
 from ghr.services.filters import ViewContext
 
 _PREFERENCES_ID = 1
@@ -30,10 +30,10 @@ class PreferencesService:
         self._session = session
         self._broker = broker
 
-    async def get(self) -> PreferencesOut:
-        return PreferencesOut.model_validate(await load_preferences(self._session))
+    async def get(self) -> PreferenceSettings:
+        return PreferenceSettings.model_validate(await load_preferences(self._session))
 
-    async def update(self, changes: PreferencesUpdate) -> PreferencesOut:
+    async def update(self, changes: PreferenceSettings) -> PreferenceSettings:
         preferences = await load_preferences(self._session)
         hidden_before = preferences.prereleases is PrereleaseMode.HIDE
         preferences.prereleases = changes.prereleases
@@ -42,4 +42,4 @@ class PreferencesService:
         if hidden_before != (preferences.prereleases is PrereleaseMode.HIDE):
             # Pre-releases moved between the Hidden view and the others.
             self._broker.publish(Event("releases-changed"))
-        return PreferencesOut.model_validate(preferences)
+        return PreferenceSettings.model_validate(preferences)

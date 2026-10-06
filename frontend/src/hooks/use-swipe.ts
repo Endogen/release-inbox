@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent, type PointerEvent } from "react"
 
 export type SwipeDirection = "left" | "right"
-export type SwipePhase = "idle" | "dragging" | "settling" | "leaving"
+type SwipePhase = "idle" | "dragging" | "leaving"
 
 interface SwipeOptions {
   onSwipeLeft?: () => void
@@ -119,7 +119,7 @@ export function useSwipe({ onSwipeLeft, onSwipeRight }: SwipeOptions) {
       }, LEAVE_MS)
     } else {
       setArmed(false)
-      setPhase("settling")
+      setPhase("idle")
       moveTo(0)
     }
   }

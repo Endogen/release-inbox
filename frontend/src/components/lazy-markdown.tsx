@@ -17,7 +17,7 @@ export function LazyMarkdown(props: MarkdownProps) {
 
 export function MarkdownSkeleton() {
   return (
-    <div className="flex flex-col gap-3" aria-busy aria-label="Loading">
+    <div role="status" aria-label="Loading" className="flex flex-col gap-3">
       <Skeleton className="h-6 w-1/3" />
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-11/12" />

@@ -34,7 +34,8 @@ Undo. Releases open full screen.
   release of a repository, so nothing between your last visit and the newest release is missed.
 - **Inbox, Snoozed, Read and Hidden views.** Every release is in exactly one of them. Actions
   on an entry cover what it stands for: marking it as read moves the release and its `+N older`
-  releases in that view to *Read*. Read state is mirrored to github.com.
+  releases in that view (within the current search) to *Read*. Read state is mirrored to
+  github.com.
 - **Snooze.** Put a release aside until later today, tomorrow, the weekend or next week. It
   comes back to the inbox with a reminder notification.
 - **Breaking changes stand out.** Releases whose notes mention breaking changes, or that are a

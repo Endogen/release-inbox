@@ -1,7 +1,6 @@
 import { toast } from "sonner"
 
 import { useSetRepositoryNotifications } from "@/features/repositories/api"
-import { useNow } from "@/hooks/use-now"
 import type { Release, ReleaseListItem, Repository, View } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
 
@@ -13,6 +12,8 @@ import { destinationOf, viewOf } from "./release-view"
 interface ReleaseActionsOptions {
   /** The view that is shown. */
   view: View
+  /** The search the list is filtered by; an entry stands for its matching releases. */
+  search: string
   /** The entry a repository has in the shown list, if it is listed. */
   entryOf: (repositoryId: number) => ReleaseListItem | undefined
   /** Called right before a release's entry leaves the shown list, to move the selection. */
@@ -25,8 +26,7 @@ interface ReleaseActionsOptions {
  * An action on an entry covers what the entry stands for: the release and its older releases
  * in the same view. The entry leaves the list if the action moves it to another view.
  */
-export function useReleaseActions({ view, entryOf, onLeave }: ReleaseActionsOptions) {
-  const now = useNow()
+export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseActionsOptions) {
   const { queue, pending } = useDeferredActions()
   const markUnreadMutation = useMarkUnread()
   const markReadMutation = useMarkRead()
@@ -37,7 +37,8 @@ export function useReleaseActions({ view, entryOf, onLeave }: ReleaseActionsOpti
   /** The view the release's entry leaves when the release moves to ``to``, if any. */
   function leavingView(release: Release, to: Exclude<View, "hidden">): View | null {
     const isEntry = entryOf(release.repository.id)?.id === release.id
-    const leaving = isEntry && viewOf(release, now) === view && destinationOf(release, to) !== view
+    const leaving =
+      isEntry && viewOf(release, Date.now()) === view && destinationOf(release, to) !== view
     return leaving ? view : null
   }
 
@@ -54,7 +55,7 @@ export function useReleaseActions({ view, entryOf, onLeave }: ReleaseActionsOpti
       repositoryId: release.repository.id,
       hideFrom: moveTo(release, "read").leaves,
       path: `/releases/${release.id}/read`,
-      body: { include_older_in: viewOf(release, now) },
+      body: { include_older_in: viewOf(release, Date.now()), search: search || null },
       message: "Marked as read",
       description: releaseLabel(release),
       errorMessage: "Couldn't mark as read",
@@ -82,15 +83,19 @@ export function useReleaseActions({ view, entryOf, onLeave }: ReleaseActionsOpti
           description: releaseLabel(release),
           action: {
             label: "Undo",
-            onClick: () =>
-              markReadMutation.mutate({ ...unread, leaves: null, includeOlderIn: null }),
+            onClick: () => markReadMutation.mutate({ ...unread, leaves: null }),
           },
         }),
     })
   }
 
   function snooze(release: Release, until: Date) {
-    const snoozed = { ...moveTo(release, "snoozed"), until, view: viewOf(release, now) }
+    const snoozed = {
+      ...moveTo(release, "snoozed"),
+      until,
+      view: viewOf(release, Date.now()),
+      search,
+    }
     snoozeMutation.mutate(snoozed, {
       onSuccess: () =>
         toast.success(`Snoozed until ${formatAbsolute(until)}`, {

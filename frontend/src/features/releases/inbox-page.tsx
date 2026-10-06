@@ -1,41 +1,54 @@
-import { useMemo, useRef, useState } from "react"
+import { lazy, Suspense, useMemo, useRef, useState } from "react"
 import { useDefaultLayout } from "react-resizable-panels"
 
-import { AppHeader } from "@/app/app-header"
+import { AppHeader } from "@/features/shell/app-header"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
-import { HideRuleDialog } from "@/features/hide-rules/hide-rule-dialog"
-import { SettingsSheet } from "@/features/settings/settings-sheet"
 import { SyncBanner } from "@/features/sync/sync-banner"
+import { useHasOpened } from "@/hooks/use-has-opened"
 import { useHotkeys } from "@/hooks/use-hotkeys"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import { useNow } from "@/hooks/use-now"
 import { useStableCallback } from "@/hooks/use-stable-callback"
 import { VIEWS, type Release, type ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { cn } from "@/lib/utils"
 
 import { useRelease, useReleaseList, useViewCounts } from "./api"
-import type { ContentTab } from "./components/release-content"
+import { CONTENT_TABS, type ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
 import { SearchBox } from "./components/search-box"
-import { ShortcutsDialog } from "./components/shortcuts-dialog"
 import { ViewTabs } from "./components/view-tabs"
 import { useDeferredActions } from "./deferred-actions/context"
 import { hiddenRepositories } from "./deferred-actions/queue"
 import { DetailSkeleton, MissingRelease, NoSelection, PaneError } from "./inbox-states"
-import { canSnooze } from "./release-view"
+import { viewOf } from "./release-view"
+import { HOTKEYS } from "./shortcuts"
 import { useInboxRoute } from "./use-inbox-route"
 import { useReleaseActions } from "./use-release-actions"
 import { VIEW_META } from "./view-meta"
 
-const CONTENT_TABS: readonly ContentTab[] = ["notes", "changes", "readme"]
 const PANEL_IDS = ["list", "detail"]
+
+// Dialogs load the first time they open.
+const HideRuleDialog = lazy(() =>
+  import("@/features/hide-rules/hide-rule-dialog").then((module) => ({
+    default: module.HideRuleDialog,
+  }))
+)
+const SettingsSheet = lazy(() =>
+  import("@/features/settings/settings-sheet").then((module) => ({
+    default: module.SettingsSheet,
+  }))
+)
+const ShortcutsDialog = lazy(() =>
+  import("./components/shortcuts-dialog").then((module) => ({
+    default: module.ShortcutsDialog,
+  }))
+)
 
 export function InboxPage({ username }: { username: string }) {
   const route = useInboxRoute()
   const { view } = route
-  const now = useNow()
   const isDesktop = useMediaQuery("(min-width: 1024px)")
   const layout = useDefaultLayout({ id: "inbox-layout", panelIds: PANEL_IDS })
 
@@ -46,6 +59,9 @@ export function InboxPage({ username }: { username: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
+  const hideDialogUsed = useHasOpened(hideTarget !== null)
+  const settingsUsed = useHasOpened(settingsOpen)
+  const shortcutsUsed = useHasOpened(shortcutsOpen)
 
   const list = useReleaseList(view, route.search)
   const counts = useViewCounts(route.search)
@@ -82,9 +98,12 @@ export function InboxPage({ username }: { username: string }) {
   /** "What's new" lists the unread releases an inbox entry stands for. */
   const whatsNewCount =
     view === "inbox" && entry && entry.older_count > 0 ? entry.older_count + 1 : 0
+  const contentTabs = CONTENT_TABS.filter((tab) => tab !== "changes" || whatsNewCount > 0)
+  const shownTab = contentTabs.includes(contentTab) ? contentTab : "notes"
 
   const actions = useReleaseActions({
     view,
+    search: route.search,
     entryOf: (repositoryId) => loaded.get(repositoryId),
     onLeave: (release) => {
       if (selected?.repository.id !== release.repository.id) return
@@ -114,9 +133,8 @@ export function InboxPage({ username }: { username: string }) {
   }
 
   function cycleContentTab() {
-    const available = CONTENT_TABS.filter((tab) => tab !== "changes" || whatsNewCount > 0)
-    const index = available.indexOf(contentTab)
-    setContentTab(available[(index + 1) % available.length] ?? "notes")
+    const index = contentTabs.indexOf(shownTab)
+    setContentTab(contentTabs[(index + 1) % contentTabs.length] ?? "notes")
   }
 
   const viewHotkeys = Object.fromEntries(
@@ -125,21 +143,24 @@ export function InboxPage({ username }: { username: string }) {
 
   useHotkeys(
     {
-      j: () => moveSelection(1),
-      k: () => moveSelection(-1),
-      e: () => selected?.read_at === null && actions.markRead(selected),
-      u: () => selected?.read_at && actions.markUnread(selected),
-      s: () => selected && canSnooze(selected, now) && setSnoozeMenuFor(selected.id),
-      h: () => selected && setHideTarget(selected),
-      m: () => selected && actions.toggleNotifications(selected),
-      o: () => selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
-      r: cycleContentTab,
+      [HOTKEYS.next]: () => moveSelection(1),
+      [HOTKEYS.previous]: () => moveSelection(-1),
+      [HOTKEYS.markRead]: () => selected?.read_at === null && actions.markRead(selected),
+      [HOTKEYS.markUnread]: () => selected?.read_at && actions.markUnread(selected),
+      // Snoozed releases offer "Unsnooze" instead of the menu.
+      [HOTKEYS.snooze]: () =>
+        selected && viewOf(selected, Date.now()) === "inbox" && setSnoozeMenuFor(selected.id),
+      [HOTKEYS.hide]: () => selected && setHideTarget(selected),
+      [HOTKEYS.notifications]: () => selected && actions.toggleNotifications(selected),
+      [HOTKEYS.open]: () =>
+        selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
+      [HOTKEYS.nextTab]: cycleContentTab,
       ...viewHotkeys,
-      "/": () => searchRef.current?.focus(),
-      "?": () => setShortcutsOpen(true),
-      Escape: () => route.closeRelease(),
+      [HOTKEYS.search]: () => searchRef.current?.focus(),
+      [HOTKEYS.help]: () => setShortcutsOpen(true),
+      [HOTKEYS.close]: () => route.closeRelease(),
     },
-    { repeatable: ["j", "k"] }
+    { repeatable: [HOTKEYS.next, HOTKEYS.previous] }
   )
 
   const listPane = (
@@ -171,7 +192,8 @@ export function InboxPage({ username }: { username: string }) {
       release={selected}
       body={selected.id === current?.id ? current.body : undefined}
       whatsNewCount={whatsNewCount}
-      contentTab={contentTab}
+      search={route.search}
+      contentTab={shownTab}
       onContentTabChange={setContentTab}
       onSelectRelease={(id) => route.selectRelease(id)}
       onBack={isDesktop ? undefined : route.closeRelease}
@@ -200,7 +222,11 @@ export function InboxPage({ username }: { username: string }) {
     <NoSelection />
   )
   const detailPane = (
-    <ErrorBoundary key={route.releaseId} fallback={(reset) => <PaneError onRetry={reset} />}>
+    // A failure resets with the next repository; switching versions keeps the pane mounted.
+    <ErrorBoundary
+      key={selected?.repository.id ?? route.releaseId}
+      fallback={(reset) => <PaneError onRetry={reset} />}
+    >
       {detailContent}
     </ErrorBoundary>
   )
@@ -239,9 +265,16 @@ export function InboxPage({ username }: { username: string }) {
         )}
       </main>
 
-      <HideRuleDialog release={hideTarget} onOpenChange={(open) => !open && setHideTarget(null)} />
-      <SettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />
-      <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+      <Suspense>
+        {hideDialogUsed && (
+          <HideRuleDialog
+            release={hideTarget}
+            onOpenChange={(open) => !open && setHideTarget(null)}
+          />
+        )}
+        {settingsUsed && <SettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />}
+        {shortcutsUsed && <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />}
+      </Suspense>
     </div>
   )
 }

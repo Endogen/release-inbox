@@ -4,10 +4,11 @@ from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.container import Container
+from ghr.schemas import MAX_SEARCH_LENGTH
 from ghr.security import (
     SESSION_CREDENTIAL_KEY,
     SESSION_USER_KEY,
@@ -24,8 +25,10 @@ from ghr.services.summaries import SummaryService
 
 _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
+SearchQuery = Annotated[str | None, Query(max_length=MAX_SEARCH_LENGTH, description="Search terms")]
 
-def get_container(request: Request) -> Container:
+
+async def get_container(request: Request) -> Container:
     container: Container = request.app.state.container
     return container
 
@@ -41,7 +44,7 @@ async def get_session(container: ContainerDep) -> AsyncIterator[AsyncSession]:
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def verify_same_origin(request: Request) -> None:
+async def verify_same_origin(request: Request) -> None:
     """Block cross-site requests that change state (CSRF), on top of ``SameSite=Lax``."""
     if request.method not in _UNSAFE_METHODS:
         return
@@ -53,7 +56,7 @@ def verify_same_origin(request: Request) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cross-site requests aren't allowed")
 
 
-def require_user(request: Request, container: ContainerDep) -> str:
+async def require_user(request: Request, container: ContainerDep) -> str:
     settings = container.settings
     expected = credential_fingerprint(settings.username, settings.password_hash.get_secret_value())
     username: str | None = request.session.get(SESSION_USER_KEY)
@@ -67,31 +70,33 @@ def require_user(request: Request, container: ContainerDep) -> str:
 CurrentUserDep = Annotated[str, Depends(require_user)]
 
 
-def get_release_queries(session: SessionDep) -> ReleaseQueries:
+async def get_release_queries(session: SessionDep) -> ReleaseQueries:
     return ReleaseQueries(session)
 
 
-def get_inbox_service(session: SessionDep, container: ContainerDep) -> InboxService:
+async def get_inbox_service(session: SessionDep, container: ContainerDep) -> InboxService:
     return InboxService(session, container.github, container.broker)
 
 
-def get_hide_rule_service(session: SessionDep, container: ContainerDep) -> HideRuleService:
+async def get_hide_rule_service(session: SessionDep, container: ContainerDep) -> HideRuleService:
     return HideRuleService(session, container.broker)
 
 
-def get_repository_service(session: SessionDep, container: ContainerDep) -> RepositoryService:
+async def get_repository_service(session: SessionDep, container: ContainerDep) -> RepositoryService:
     return RepositoryService(session, container.broker)
 
 
-def get_preferences_service(session: SessionDep, container: ContainerDep) -> PreferencesService:
+async def get_preferences_service(
+    session: SessionDep, container: ContainerDep
+) -> PreferencesService:
     return PreferencesService(session, container.broker)
 
 
-def get_summary_service(session: SessionDep, container: ContainerDep) -> SummaryService:
+async def get_summary_service(session: SessionDep, container: ContainerDep) -> SummaryService:
     return SummaryService(session, container.summarizer)
 
 
-def get_readme_service(session: SessionDep, container: ContainerDep) -> ReadmeService:
+async def get_readme_service(session: SessionDep, container: ContainerDep) -> ReadmeService:
     return ReadmeService(
         session, container.github, timedelta(seconds=container.settings.readme_cache_seconds)
     )

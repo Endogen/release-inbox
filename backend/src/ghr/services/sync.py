@@ -46,13 +46,20 @@ _BATCH_SIZE = 25
 class _Skipped(Enum):
     """Why a release couldn't be fetched, for problems that only concern that release."""
 
-    #: GitHub answered 404/410: deleted, or the repository is no longer accessible.
+    #: GitHub answered 404: deleted, or the repository is no longer accessible.
     GONE = auto()
     #: Inaccessible (SSO enforcement, takedown) or an unexpected response.
     UNAVAILABLE = auto()
 
 
 type _Fetched = FetchedRelease | NotModified | _Skipped
+
+
+@dataclass(frozen=True, slots=True)
+class RefreshResult:
+    refreshed: int
+    #: Set when GitHub asked to wait before the next request.
+    retry_after_seconds: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,15 +110,18 @@ class NotificationSyncService:
             finally:
                 self._publish_status(in_progress=False)
 
-    async def refresh_recent(self, *, published_within: timedelta) -> int:
+    async def refresh_recent(self, *, published_within: timedelta) -> RefreshResult:
         """Re-fetch recently published releases so edited notes, renames and promotions from
-        pre-release to release show up. Returns the number of changed releases."""
+        pre-release to release show up."""
         async with self._lock:
             try:
-                return await self._refresh_recent(published_within)
-            except (GitHubError, httpx.HTTPError) as error:
+                return RefreshResult(await self._refresh_recent(published_within))
+            except GitHubError as error:
                 logger.warning("Refreshing recent releases failed: %s", error)
-                return 0
+                return RefreshResult(0, retry_after_seconds=error.retry_after_seconds)
+            except httpx.HTTPError as error:
+                logger.warning("Refreshing recent releases failed: %s", error)
+                return RefreshResult(0)
 
     # Notification import
 
@@ -250,8 +260,14 @@ class NotificationSyncService:
         promoted: list[int] = []
         touched: set[int] = set()
         async with self._session_factory() as session:
+            stored = {
+                release.id: release
+                for release in await session.scalars(
+                    select(Release).where(Release.id.in_([item.id for item in candidates]))
+                )
+            }
             for candidate, result in zip(candidates, results, strict=True):
-                release = await session.get(Release, candidate.id)
+                release = stored.get(candidate.id)
                 if release is None:
                     continue
                 if release.id in gone:
@@ -365,7 +381,7 @@ async def _gather_limited[T](awaitables: Sequence[Awaitable[T]]) -> list[T]:
     return [task.result() for task in tasks]
 
 
-async def _upsert_repository(session: AsyncSession, data: GitHubRepository) -> Repository:
+async def _upsert_repository(session: AsyncSession, data: GitHubRepository) -> None:
     repository = await session.get(Repository, data.id)
     if repository is None or repository.full_name != data.full_name:
         # Another (renamed or deleted) repository may still hold this name.
@@ -386,7 +402,6 @@ async def _upsert_repository(session: AsyncSession, data: GitHubRepository) -> R
     repository.html_url = data.html_url
     repository.description = data.description
     repository.private = data.private
-    return repository
 
 
 async def _classify(session: AsyncSession, repository_ids: Iterable[int]) -> None:

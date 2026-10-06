@@ -165,8 +165,13 @@ class GitHubClient:
         return True
 
     async def unwatch_repository(self, repository_id: int) -> None:
-        """Stop watching a repository, which ends all its notifications including releases."""
+        """Stop watching a repository, which ends all its notifications including releases.
+
+        A repository that no longer exists counts as unwatched.
+        """
         response = await self._http.delete(f"/repositories/{repository_id}/subscription")
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return
         _raise_for_status(response)
 
     async def get_readme(

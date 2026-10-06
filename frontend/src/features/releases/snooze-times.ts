@@ -26,14 +26,13 @@ function daysUntil(now: Date, weekday: number): number {
 }
 
 export function snoozeOptions(now: Date): SnoozeOption[] {
-  const options: SnoozeOption[] = [
-    {
-      id: "later-today",
-      label: "Later today",
-      until: new Date(now.getTime() + LATER_TODAY_HOURS * 60 * 60 * 1000),
-    },
-    { id: "tomorrow", label: "Tomorrow", until: atMorning(now, 1) },
-  ]
+  const options: SnoozeOption[] = []
+  const laterToday = new Date(now.getTime() + LATER_TODAY_HOURS * 60 * 60 * 1000)
+  // Late in the evening, three hours on is already tomorrow.
+  if (laterToday.getDate() === now.getDate()) {
+    options.push({ id: "later-today", label: "Later today", until: laterToday })
+  }
+  options.push({ id: "tomorrow", label: "Tomorrow", until: atMorning(now, 1) })
   // From Friday on, "tomorrow" already is the weekend.
   if (![FRIDAY, SATURDAY, SUNDAY].includes(now.getDay())) {
     options.push({
@@ -42,10 +41,13 @@ export function snoozeOptions(now: Date): SnoozeOption[] {
       until: atMorning(now, daysUntil(now, SATURDAY)),
     })
   }
-  options.push({
-    id: "next-week",
-    label: "Next week",
-    until: atMorning(now, daysUntil(now, MONDAY)),
-  })
+  // On Sundays, next week starts tomorrow.
+  if (now.getDay() !== SUNDAY) {
+    options.push({
+      id: "next-week",
+      label: "Next week",
+      until: atMorning(now, daysUntil(now, MONDAY)),
+    })
+  }
   return options
 }

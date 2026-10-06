@@ -2,10 +2,11 @@ import {
   BookOpenIcon,
   ExternalLinkIcon,
   FileTextIcon,
-  RefreshCwIcon,
   ScrollTextIcon,
   SparklesIcon,
 } from "lucide-react"
+
+import { ErrorState } from "@/components/error-state"
 import { LazyMarkdown, MarkdownSkeleton } from "@/components/lazy-markdown"
 import { RelativeTime } from "@/components/relative-time"
 import { Badge } from "@/components/ui/badge"
@@ -29,8 +30,10 @@ import { fileBaseUrls, repositoryBaseUrls } from "@/lib/markdown-urls"
 
 import { useReadme, useUnreadReleases } from "../api"
 import { releaseTitle } from "../release-title"
+import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 
-export type ContentTab = "notes" | "changes" | "readme"
+export const CONTENT_TABS = ["notes", "changes", "readme"] as const
+export type ContentTab = (typeof CONTENT_TABS)[number]
 
 interface ReleaseContentProps {
   release: Release
@@ -38,6 +41,9 @@ interface ReleaseContentProps {
   body: string | null | undefined
   /** Unread releases of the entry, shown under "What's new"; 0 hides the tab. */
   whatsNewCount: number
+  /** The list's search, which narrows what the entry stands for. */
+  search: string
+  /** The shown tab; "changes" only while there is something new. */
   tab: ContentTab
   onTabChange: (tab: ContentTab) => void
 }
@@ -46,15 +52,15 @@ export function ReleaseContent({
   release,
   body,
   whatsNewCount,
+  search,
   tab,
   onTabChange,
 }: ReleaseContentProps) {
   const showChanges = whatsNewCount > 0
-  const activeTab = tab === "changes" && !showChanges ? "notes" : tab
 
   return (
     <Tabs
-      value={activeTab}
+      value={tab}
       onValueChange={(value) => onTabChange(value as ContentTab)}
       className="min-h-0 flex-1 gap-0"
     >
@@ -81,17 +87,18 @@ export function ReleaseContent({
           </TabsTrigger>
         </TabsList>
       </div>
+      {/* Inactive tabs are unmounted, so each loads its content when it is opened. */}
       <ScrollArea className="min-h-0 flex-1">
         <TabsContent value="notes" className="px-6 py-6">
           <ReleaseNotes release={release} body={body} />
         </TabsContent>
         {showChanges && (
           <TabsContent value="changes" className="px-6 py-6">
-            <WhatsNew release={release} active={activeTab === "changes"} />
+            <WhatsNew release={release} search={search} />
           </TabsContent>
         )}
         <TabsContent value="readme" className="px-6 py-6">
-          <RepositoryReadme release={release} active={activeTab === "readme"} />
+          <RepositoryReadme release={release} />
         </TabsContent>
       </ScrollArea>
     </Tabs>
@@ -128,8 +135,8 @@ function ReleaseNotes({ release, body }: { release: Release; body: string | null
 }
 
 /** The notes of every unread release of the entry, newest first. */
-function WhatsNew({ release, active }: { release: Release; active: boolean }) {
-  const unread = useUnreadReleases(release.repository.id, active)
+function WhatsNew({ release, search }: { release: Release; search: string }) {
+  const unread = useUnreadReleases(release.repository.id, search)
   if (unread.isPending) return <MarkdownSkeleton />
   if (unread.isError) return <LoadError onRetry={() => void unread.refetch()} />
 
@@ -171,16 +178,16 @@ function WhatsNewHeading({ release }: { release: ReleaseDetail }) {
       <Badge variant="outline" className="font-mono">
         {release.tag_name}
       </Badge>
-      {release.breaking && <Badge variant="destructive">Breaking</Badge>}
-      {release.prerelease && <Badge variant="secondary">Pre-release</Badge>}
+      {release.breaking && <BreakingBadge />}
+      {release.prerelease && <PrereleaseBadge />}
       <RelativeTime date={release.published_at} className="text-sm text-muted-foreground" />
     </div>
   )
 }
 
-function RepositoryReadme({ release, active }: { release: Release; active: boolean }) {
+function RepositoryReadme({ release }: { release: Release }) {
   const { repository } = release
-  const readme = useReadme(repository.id, active)
+  const readme = useReadme(repository.id)
 
   if (readme.isPending) return <MarkdownSkeleton />
   if (readme.isError) {
@@ -211,21 +218,10 @@ function RepositoryReadme({ release, active }: { release: Release; active: boole
 
 function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <Empty>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <RefreshCwIcon />
-        </EmptyMedia>
-        <EmptyTitle>Couldn't load this</EmptyTitle>
-        <EmptyDescription>
-          GitHub or the server didn't respond. Try again in a moment.
-        </EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          Try again
-        </Button>
-      </EmptyContent>
-    </Empty>
+    <ErrorState
+      title="Couldn't load this"
+      description="GitHub or the server didn't respond. Try again in a moment."
+      onAction={onRetry}
+    />
   )
 }

@@ -73,16 +73,13 @@ export function NotificationSettings() {
               "Get notified as soon as a new release is published, even when the app is closed."}
           </FieldDescription>
         </FieldContent>
-        {busy ? (
-          <Spinner />
-        ) : (
-          <Switch
-            id="push-notifications"
-            checked={push.isSubscribed}
-            onCheckedChange={toggle}
-            disabled={unavailableReason !== null || push.isLoading}
-          />
-        )}
+        <Switch
+          id="push-notifications"
+          checked={push.isSubscribed}
+          onCheckedChange={toggle}
+          aria-busy={busy}
+          disabled={unavailableReason !== null || push.isLoading || busy}
+        />
       </Field>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="text-muted-foreground">Server channels:</span>

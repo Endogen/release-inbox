@@ -109,14 +109,20 @@ class ReleaseQueries:
         )
         return [release_ref(release, hidden) for release, hidden in rows]
 
-    async def list_unread_for_repository(self, repository_id: int) -> list[ReleaseDetail]:
+    async def list_unread_for_repository(
+        self, repository_id: int, *, search: str | None
+    ) -> list[ReleaseDetail]:
         """Unread inbox releases of a repository, newest first: what changed since the user
-        last looked. These are exactly the entry's release and its ``+N older``."""
+        last looked. With the same ``search``, these are the entry's release and its
+        ``+N older``."""
         await self._require_repository(repository_id)
         context = await load_view_context(self._session)
+        filters = [Release.repository_id == repository_id, in_view(View.INBOX, context)]
+        if (search_filter := matches_search(search)) is not None:
+            filters.append(search_filter)
         rows = await self._session.execute(
             _select_with_repository()
-            .where(Release.repository_id == repository_id, in_view(View.INBOX, context))
+            .where(*filters)
             .order_by(Release.published_at.desc(), Release.id.desc())
             .limit(MAX_UNREAD_RELEASES)
         )

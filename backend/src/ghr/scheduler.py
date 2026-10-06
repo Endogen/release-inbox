@@ -76,24 +76,31 @@ class SyncScheduler:
         try:
             result = await self._sync.sync()
             delay = max(delay, result.poll_interval_seconds or 0)
-            if result.retry_after_seconds is not None:
-                delay = max(delay, result.retry_after_seconds)
-                self._backoff_until = time.monotonic() + result.retry_after_seconds
+            delay = max(delay, self._back_off(result.retry_after_seconds))
         except Exception:
             # Keep polling: one failed run must not stop future synchronisation.
             logger.exception("Unexpected error during notification sync")
         if time.monotonic() >= self._next_refresh and not self.backing_off:
             self._next_refresh = time.monotonic() + self._refresh_interval
             try:
-                await self._sync.refresh_recent(published_within=self._refresh_window)
+                refresh = await self._sync.refresh_recent(published_within=self._refresh_window)
+                delay = max(delay, self._back_off(refresh.retry_after_seconds))
             except Exception:
                 logger.exception("Unexpected error while refreshing releases")
         return delay
 
+    def _back_off(self, retry_after_seconds: int | None) -> float:
+        """Respect a wait GitHub asked for; returns it (0 if there is none)."""
+        if retry_after_seconds is None:
+            return 0
+        self._backoff_until = max(self._backoff_until, time.monotonic() + retry_after_seconds)
+        return retry_after_seconds
+
     async def _poll_loop(self) -> None:
         while True:
-            delay = await self.run_once()
+            # Cleared before the run, so a sync requested while it runs triggers another one.
             self._wake.clear()
+            delay = await self.run_once()
             # Sleep until the next poll, or until a sync is requested; never before a backoff
             # GitHub asked for has passed.
             with contextlib.suppress(TimeoutError):

@@ -1,11 +1,4 @@
-import {
-  AlarmClockIcon,
-  ArchiveIcon,
-  CheckCheckIcon,
-  EyeOffIcon,
-  SearchXIcon,
-  type LucideIcon,
-} from "lucide-react"
+import { SearchXIcon } from "lucide-react"
 import { useEffect, useRef } from "react"
 
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
@@ -14,6 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import type { ReleaseListItem as ReleaseListItemData, View } from "@/lib/api/types"
 
+import { VIEW_META } from "../view-meta"
 import { ReleaseListItem, type ReleaseRowHandlers } from "./release-list-item"
 
 interface ReleaseListProps extends ReleaseRowHandlers {
@@ -49,6 +43,8 @@ export function ReleaseList({
   const selectedRef = useRef<HTMLLIElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
   const selectedId = items.find((item) => item.repository.id === selectedRepositoryId)?.id
+  // Entries hidden by pending actions can empty the loaded pages while more exist.
+  const showList = !isLoading && (items.length > 0 || hasNextPage)
 
   useEffect(() => {
     const row = selectedRef.current
@@ -74,14 +70,14 @@ export function ReleaseList({
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [hasNextPage, isFetchingNextPage, onLoadMore])
+  }, [showList, hasNextPage, isFetchingNextPage, onLoadMore])
 
   if (isLoading) return <ReleaseListSkeleton />
-  if (items.length === 0) return <ReleaseListEmpty view={view} search={search} />
+  if (!showList) return <ReleaseListEmpty view={view} search={search} />
 
   return (
     <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
-      <ul ref={listRef} aria-label="Releases" className="flex flex-col">
+      <ul ref={listRef} className="flex flex-col">
         {items.map((release) => {
           const selected = release.repository.id === selectedRepositoryId
           return (
@@ -107,9 +103,9 @@ export function ReleaseList({
 function ReleaseListSkeleton() {
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
-      aria-busy
+      role="status"
       aria-label="Loading releases"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
     >
       {Array.from({ length: 8 }, (_, index) => (
         <div key={index} className="flex gap-3 border-b border-border/60 px-4 py-3">
@@ -125,29 +121,6 @@ function ReleaseListSkeleton() {
   )
 }
 
-const EMPTY_STATES: Record<View, { icon: LucideIcon; title: string; description: string }> = {
-  inbox: {
-    icon: CheckCheckIcon,
-    title: "You're all caught up",
-    description: "New releases from repositories you watch will show up here.",
-  },
-  snoozed: {
-    icon: AlarmClockIcon,
-    title: "Nothing snoozed",
-    description: "Snooze a release to put it aside; it comes back to the inbox when it's time.",
-  },
-  read: {
-    icon: ArchiveIcon,
-    title: "No read releases yet",
-    description: "Releases you mark as read are kept here for later.",
-  },
-  hidden: {
-    icon: EyeOffIcon,
-    title: "Nothing hidden",
-    description: "Hide releases of a component you don't care about to keep your inbox focused.",
-  },
-}
-
 function ReleaseListEmpty({ view, search }: { view: View; search: string }) {
   const {
     icon: Icon,
@@ -159,7 +132,7 @@ function ReleaseListEmpty({ view, search }: { view: View; search: string }) {
         title: "No matches",
         description: `Nothing in this view matches "${search}".`,
       }
-    : EMPTY_STATES[view]
+    : VIEW_META[view].empty
 
   return (
     <Empty className="flex-1">

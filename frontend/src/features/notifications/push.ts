@@ -2,6 +2,8 @@ import { api } from "@/lib/api/client"
 import { decodeBase64Url } from "@/lib/base64-url"
 
 const SERVICE_WORKER_URL = "/sw.js"
+/** The pages the service worker controls: the whole app. */
+const SCOPE = "/"
 
 export type PushSupport = "supported" | "unsupported" | "insecure-context"
 
@@ -13,12 +15,12 @@ export function getPushSupport(): PushSupport {
 }
 
 function registerServiceWorker(): Promise<ServiceWorkerRegistration> {
-  return navigator.serviceWorker.register(SERVICE_WORKER_URL)
+  return navigator.serviceWorker.register(SERVICE_WORKER_URL, { scope: SCOPE })
 }
 
 export async function getActiveSubscription(): Promise<PushSubscription | null> {
   if (getPushSupport() !== "supported") return null
-  const registration = await navigator.serviceWorker.getRegistration(SERVICE_WORKER_URL)
+  const registration = await navigator.serviceWorker.getRegistration(SCOPE)
   return (await registration?.pushManager.getSubscription()) ?? null
 }
 

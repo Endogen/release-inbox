@@ -9,7 +9,8 @@ export const releaseKeys = {
   details: () => [...releaseKeys.all, "detail"] as const,
   detail: (id: number) => [...releaseKeys.details(), id] as const,
   history: (repositoryId: number) => [...releaseKeys.all, "history", repositoryId] as const,
-  unread: (repositoryId: number) => [...releaseKeys.all, "unread", repositoryId] as const,
+  unread: (repositoryId: number, search: string) =>
+    [...releaseKeys.all, "unread", repositoryId, search] as const,
 }
 
 export const readmeKeys = {

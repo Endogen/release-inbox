@@ -5,6 +5,7 @@ from ghr.api.deps import (
     ReadmeServiceDep,
     ReleaseQueriesDep,
     RepositoryServiceDep,
+    SearchQuery,
 )
 from ghr.schemas import (
     ReadmeOut,
@@ -42,10 +43,10 @@ async def list_repository_releases(
 
 @router.get("/{repository_id}/unread")
 async def list_unread_releases(
-    repository_id: int, queries: ReleaseQueriesDep
+    repository_id: int, queries: ReleaseQueriesDep, q: SearchQuery = None
 ) -> list[ReleaseDetail]:
     """Unread inbox releases of the repository with their notes: what's new since last read."""
-    return await queries.list_unread_for_repository(repository_id)
+    return await queries.list_unread_for_repository(repository_id, search=q)
 
 
 @router.get("/{repository_id}/readme")

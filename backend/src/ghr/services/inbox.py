@@ -21,7 +21,7 @@ from ghr.errors import ConflictError, NotFoundError
 from ghr.events import Event, EventBroker
 from ghr.github.client import GitHubClient, GitHubError
 from ghr.models import Release, Repository
-from ghr.services.filters import in_view, is_hidden
+from ghr.services.filters import ViewContext, in_view, is_hidden, matches_search
 from ghr.services.preferences import load_view_context
 
 logger = logging.getLogger(__name__)
@@ -35,13 +35,18 @@ class InboxService:
         self._github = github
         self._broker = broker
 
-    async def mark_read(self, release_id: int, *, include_older_in: View | None) -> list[str]:
-        """Mark a release as read, and the older unread releases in ``include_older_in``.
+    async def mark_read(
+        self, release_id: int, *, include_older_in: View | None, search: str | None = None
+    ) -> list[str]:
+        """Mark a release as read, and the older unread releases in ``include_older_in`` that
+        match ``search``.
 
         Returns the notification threads to mirror to GitHub with ``mirror_read``.
         """
         release = await self._get_release(release_id)
-        older = await self._older_in_view(release, include_older_in) if include_older_in else []
+        older = (
+            await self._older_in_view(release, include_older_in, search) if include_older_in else []
+        )
         targets = {release, *older}
         return await self._mark_read([item for item in targets if item.read_at is None])
 
@@ -51,17 +56,24 @@ class InboxService:
         release.snoozed_until = None
         await self._commit()
 
-    async def snooze(self, release_id: int, until: datetime, *, view: View) -> None:
-        """Hide the release and its older releases in ``view`` from the inbox until ``until``.
+    async def snooze(
+        self, release_id: int, until: datetime, *, view: View, search: str | None = None
+    ) -> None:
+        """Hide the release and its older releases in ``view`` that match ``search`` from the
+        inbox until ``until``.
 
         A newer release of the repository still shows up in the inbox right away.
         """
         release = await self._get_release(release_id)
         if release.read_at is not None:
             raise ConflictError("Only unread releases can be snoozed")
-        if await self._is_hidden(release):
+        context = await load_view_context(self._session)
+        hidden = await self._session.scalar(
+            select(is_hidden(context.prereleases)).where(Release.id == release.id)
+        )
+        if hidden:
             raise ConflictError("Hidden releases can't be snoozed")
-        for item in {release, *await self._older_in_view(release, view)}:
+        for item in {release, *await self._older_in_view(release, view, search, context)}:
             item.snoozed_until = until
         await self._commit()
 
@@ -111,23 +123,24 @@ class InboxService:
 
         await asyncio.gather(*(mark(thread_id) for thread_id in thread_ids))
 
-    async def _older_in_view(self, release: Release, view: View) -> Sequence[Release]:
-        context = await load_view_context(self._session)
-        older = await self._session.scalars(
-            select(Release).where(
-                Release.repository_id == release.repository_id,
-                Release.published_at <= release.published_at,
-                in_view(view, context),
-            )
-        )
+    async def _older_in_view(
+        self,
+        release: Release,
+        view: View,
+        search: str | None,
+        context: ViewContext | None = None,
+    ) -> Sequence[Release]:
+        """The releases an entry stands for: up to ``release``, in ``view``, matching ``search``."""
+        context = context or await load_view_context(self._session)
+        filters = [
+            Release.repository_id == release.repository_id,
+            Release.published_at <= release.published_at,
+            in_view(view, context),
+        ]
+        if (search_filter := matches_search(search)) is not None:
+            filters.append(search_filter)
+        older = await self._session.scalars(select(Release).join(Repository).where(*filters))
         return older.all()
-
-    async def _is_hidden(self, release: Release) -> bool:
-        context = await load_view_context(self._session)
-        hidden = await self._session.scalar(
-            select(is_hidden(context.prereleases)).where(Release.id == release.id)
-        )
-        return bool(hidden)
 
     async def _mark_read(self, releases: Sequence[Release]) -> list[str]:
         now = utcnow()

@@ -3,14 +3,14 @@
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import contains_eager
 
 from ghr.errors import ConflictError, NotFoundError
 from ghr.events import Event, EventBroker
 from ghr.models import HideRule, Release, Repository
 from ghr.schemas import HideRuleOut, HideRulePreview, RepositoryOut
 from ghr.services.filters import is_hidden, matches_pattern
-from ghr.services.preferences import load_preferences
+from ghr.services.preferences import load_view_context
 from ghr.services.releases import release_ref
 
 PREVIEW_LIMIT = 10
@@ -35,8 +35,8 @@ class HideRuleService:
     async def list_all(self) -> list[HideRuleOut]:
         rows = await self._session.execute(
             select(HideRule, _match_count(HideRule.repository_id, HideRule.pattern))
-            .options(selectinload(HideRule.repository))
             .join(HideRule.repository)
+            .options(contains_eager(HideRule.repository))
             .order_by(Repository.full_name, HideRule.pattern)
         )
         return [_to_out(rule, count) for rule, count in rows]
@@ -66,12 +66,12 @@ class HideRuleService:
     async def preview(self, repository_id: int, pattern: str) -> HideRulePreview:
         """Releases of the repository a rule with ``pattern`` would hide."""
         await self._require_repository(repository_id)
-        preferences = await load_preferences(self._session)
+        context = await load_view_context(self._session)
         total = await self._session.scalar(select(_match_count(repository_id, pattern)))
         rows = await self._session.execute(
-            select(Release, is_hidden(preferences.prereleases).label("is_hidden"))
+            select(Release, is_hidden(context.prereleases).label("is_hidden"))
             .where(Release.repository_id == repository_id, matches_pattern(pattern))
-            .order_by(Release.published_at.desc())
+            .order_by(Release.published_at.desc(), Release.id.desc())
             .limit(PREVIEW_LIMIT)
         )
         matches = [release_ref(release, hidden) for release, hidden in rows]

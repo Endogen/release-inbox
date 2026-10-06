@@ -13,6 +13,8 @@ import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api/client"
 
+import { HOTKEYS } from "./shortcuts"
+
 /** The detail pane while nothing is selected. */
 export function NoSelection() {
   return (
@@ -29,10 +31,10 @@ export function NoSelection() {
       <EmptyContent>
         <p className="flex items-center gap-2 text-xs text-muted-foreground">
           <KbdGroup>
-            <Kbd>j</Kbd>
-            <Kbd>k</Kbd>
+            <Kbd>{HOTKEYS.next}</Kbd>
+            <Kbd>{HOTKEYS.previous}</Kbd>
           </KbdGroup>
-          to move through releases, <Kbd>?</Kbd> for all shortcuts
+          to move through releases, <Kbd>{HOTKEYS.help}</Kbd> for all shortcuts
         </p>
       </EmptyContent>
     </Empty>
@@ -66,7 +68,7 @@ export function MissingRelease({ error, onRetry }: { error: Error; onRetry: () =
 
 export function DetailSkeleton() {
   return (
-    <div className="flex flex-col gap-5 p-6" aria-busy aria-label="Loading release">
+    <div role="status" aria-label="Loading release" className="flex flex-col gap-5 p-6">
       <div className="flex items-center gap-3">
         <Skeleton className="size-10 rounded-lg" />
         <div className="flex flex-1 flex-col gap-2">

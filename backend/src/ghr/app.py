@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from ghr.api import build_api_router
 from ghr.config import Settings, get_settings
 from ghr.container import Container
-from ghr.errors import ConflictError, NotFoundError
+from ghr.errors import ConflictError, InvalidRequestError, NotFoundError
 from ghr.github.client import GitHubError
 from ghr.services.summaries import SummaryError
 
@@ -61,6 +61,10 @@ def _register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(ConflictError)
     async def _conflict(_: Request, error: ConflictError) -> JSONResponse:
         return _error(status.HTTP_409_CONFLICT, str(error))
+
+    @app.exception_handler(InvalidRequestError)
+    async def _invalid(_: Request, error: InvalidRequestError) -> JSONResponse:
+        return _error(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error))
 
     @app.exception_handler(SummaryError)
     async def _summary(_: Request, error: SummaryError) -> JSONResponse:

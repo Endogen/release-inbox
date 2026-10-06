@@ -1,4 +1,3 @@
-import { useCallback } from "react"
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router"
 
 import { isView, type View } from "@/lib/api/types"
@@ -30,42 +29,41 @@ export function useInboxRoute() {
   const releaseId = parseId(searchParams.get("release"))
   const openedFromList = (location.state as RouteState | null)?.openedFromList === true
 
-  const updateParam = useCallback(
-    (key: string, value: string | null, options: { push?: boolean; state?: RouteState } = {}) =>
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current)
-          if (value) next.set(key, value)
-          else next.delete(key)
-          return next
-        },
-        { replace: !options.push, state: options.state }
-      ),
-    [setSearchParams]
-  )
+  function updateParam(
+    key: string,
+    value: string | null,
+    options: { push?: boolean; state?: RouteState } = {}
+  ) {
+    const next = new URLSearchParams(searchParams)
+    if (value) next.set(key, value)
+    else next.delete(key)
+    setSearchParams(next, { replace: !options.push, state: options.state })
+  }
 
   /**
    * Select a release. ``push`` adds a history entry, so the system back gesture returns to the
    * list (used when opening the full-screen detail on mobile).
    */
-  const selectRelease = useCallback(
-    (id: number | null, { push = false }: { push?: boolean } = {}) =>
-      updateParam("release", id === null ? null : String(id), {
-        push,
-        state: push ? { openedFromList: true } : { openedFromList },
-      }),
-    [updateParam, openedFromList]
-  )
+  function selectRelease(id: number | null, { push = false }: { push?: boolean } = {}) {
+    updateParam("release", id === null ? null : String(id), {
+      push,
+      state: push ? { openedFromList: true } : { openedFromList },
+    })
+  }
 
   /** Leave the detail: go back in history if it was opened from the list, else deselect. */
-  const closeRelease = useCallback(() => {
-    if (openedFromList) navigate(-1)
+  function closeRelease() {
+    if (openedFromList) void navigate(-1)
     else updateParam("release", null)
-  }, [navigate, openedFromList, updateParam])
+  }
 
-  const setSearch = useCallback((value: string) => updateParam("q", value || null), [updateParam])
+  function setSearch(value: string) {
+    updateParam("q", value || null)
+  }
 
-  const setView = useCallback((next: View) => navigate(viewPath(next, search)), [navigate, search])
+  function setView(next: View) {
+    void navigate(viewPath(next, search))
+  }
 
   return { view, search, releaseId, selectRelease, closeRelease, setSearch, setView }
 }

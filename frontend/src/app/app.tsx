@@ -1,4 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
+import { lazy, Suspense } from "react"
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router"
 
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -7,7 +8,6 @@ import { Toaster } from "@/components/ui/sonner"
 import { Spinner } from "@/components/ui/spinner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCurrentUser } from "@/features/auth/api"
-import { LoginPage } from "@/features/auth/login-page"
 import { useLiveUpdates } from "@/features/live-updates/use-live-updates"
 import { useNotificationNavigation } from "@/features/notifications/use-notification-navigation"
 import { DeferredActionsProvider } from "@/features/releases/deferred-actions/provider"
@@ -16,6 +16,11 @@ import { ThemeProvider } from "@/features/theme/provider"
 import { isView } from "@/lib/api/types"
 
 import { queryClient } from "./query-client"
+
+// Most visits are signed in already, so the sign-in page loads only when needed.
+const LoginPage = lazy(() =>
+  import("@/features/auth/login-page").then((module) => ({ default: module.LoginPage }))
+)
 
 export function App() {
   return (
@@ -52,13 +57,7 @@ function AuthenticatedApp() {
   useLiveUpdates(Boolean(user))
   useNotificationNavigation()
 
-  if (me.isPending) {
-    return (
-      <div className="flex h-dvh items-center justify-center">
-        <Spinner className="size-6 text-muted-foreground" />
-      </div>
-    )
-  }
+  if (me.isPending) return <FullPageSpinner />
   if (me.isError) {
     return (
       <ErrorState
@@ -69,13 +68,27 @@ function AuthenticatedApp() {
       />
     )
   }
-  if (!user) return <LoginPage />
+  if (!user) {
+    return (
+      <Suspense fallback={<FullPageSpinner />}>
+        <LoginPage />
+      </Suspense>
+    )
+  }
 
   return (
     <Routes>
       <Route path="/:view" element={<ViewRoute username={user.username} />} />
       <Route path="*" element={<Navigate to="/inbox" replace />} />
     </Routes>
+  )
+}
+
+function FullPageSpinner() {
+  return (
+    <div className="flex h-dvh items-center justify-center">
+      <Spinner className="size-6 text-muted-foreground" />
+    </div>
   )
 }
 

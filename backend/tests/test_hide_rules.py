@@ -50,13 +50,12 @@ async def test_rejects_duplicates_blank_patterns_and_unknown_repositories(
     first = await user_client.post("/api/hide-rules", json=rule)
     duplicate = await user_client.post("/api/hide-rules", json=rule)
     blank = await user_client.post("/api/hide-rules", json={"repository_id": 10, "pattern": " "})
+    blank_preview = await user_client.get(
+        "/api/hide-rules/preview", params={"repository_id": 10, "pattern": "  "}
+    )
     unknown = await user_client.get(
         "/api/hide-rules/preview", params={"repository_id": 999, "pattern": "*"}
     )
 
-    assert [response.status_code for response in (first, duplicate, blank, unknown)] == [
-        201,
-        409,
-        422,
-        404,
-    ]
+    responses = (first, duplicate, blank, blank_preview, unknown)
+    assert [response.status_code for response in responses] == [201, 409, 422, 422, 404]
