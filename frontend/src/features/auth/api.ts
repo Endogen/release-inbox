@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
+import { useDeferredActionQueue } from "@/features/deferred-actions/context"
 import { api, ApiError } from "@/lib/api/client"
 import type { CurrentUser } from "@/lib/api/types"
 
@@ -34,8 +35,13 @@ export function useLogin() {
 
 export function useLogout() {
   const queryClient = useQueryClient()
+  const pendingActions = useDeferredActionQueue()
   return useMutation({
-    mutationFn: () => api.post("/auth/logout"),
+    mutationFn: async () => {
+      // Send undoable actions that are still waiting while the session is valid.
+      await pendingActions.flush()
+      await api.post("/auth/logout")
+    },
     onSuccess: () => {
       queryClient.clear()
       queryClient.setQueryData(authKeys.me, null)

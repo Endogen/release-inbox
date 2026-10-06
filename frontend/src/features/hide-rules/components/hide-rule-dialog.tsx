@@ -34,11 +34,15 @@ interface HideRuleDialogProps {
 }
 
 export function HideRuleDialog({ release, onOpenChange }: HideRuleDialogProps) {
+  // Keep showing the last release while the dialog animates out.
+  const [shown, setShown] = useState(release)
+  if (release !== null && release !== shown) setShown(release)
+
   return (
     <Dialog open={release !== null} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
-        {release && (
-          <HideRuleForm key={release.id} release={release} onDone={() => onOpenChange(false)} />
+        {shown && (
+          <HideRuleForm key={shown.id} release={shown} onDone={() => onOpenChange(false)} />
         )}
       </DialogContent>
     </Dialog>

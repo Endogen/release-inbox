@@ -48,10 +48,6 @@ export function usePushNotifications() {
     onSettled: refreshSubscription,
   })
 
-  const sendTest = useMutation({
-    mutationFn: () => api.post("/push/test"),
-  })
-
   return {
     support,
     serverEnabled: config.data?.enabled ?? false,
@@ -59,6 +55,5 @@ export function usePushNotifications() {
     isSubscribed: subscription.data ?? false,
     enable,
     disable,
-    sendTest,
   }
 }

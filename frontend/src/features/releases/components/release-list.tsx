@@ -1,4 +1,11 @@
-import { CheckCheckIcon, EyeOffIcon, SearchXIcon, ArchiveIcon, type LucideIcon } from "lucide-react"
+import {
+  AlarmClockIcon,
+  ArchiveIcon,
+  CheckCheckIcon,
+  EyeOffIcon,
+  SearchXIcon,
+  type LucideIcon,
+} from "lucide-react"
 import { useEffect, useRef } from "react"
 
 import {
@@ -13,41 +20,52 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import type { ReleaseListItem as ReleaseListItemData, View } from "@/lib/api/types"
 
-import { ReleaseListItem } from "./release-list-item"
+import { ReleaseListItem, type ReleaseRowHandlers } from "./release-list-item"
 
-interface ReleaseListProps {
+interface ReleaseListProps extends ReleaseRowHandlers {
   view: View
   search: string
-  items: ReleaseListItemData[]
+  items: readonly ReleaseListItemData[]
+  /** Repository of the selected release; its entry is highlighted. */
+  selectedRepositoryId: number | undefined
   isLoading: boolean
   hasNextPage: boolean
   isFetchingNextPage: boolean
   onLoadMore: () => void
-  isSelected: (release: ReleaseListItemData) => boolean
-  onSelect: (release: ReleaseListItemData) => void
-  onMarkRead?: (release: ReleaseListItemData) => void
-  onUnsubscribe?: (release: ReleaseListItemData) => void
 }
+
+/** Distance from the end of the list at which the next page starts loading. */
+const PREFETCH_MARGIN = "600px"
 
 export function ReleaseList({
   view,
   search,
   items,
+  selectedRepositoryId,
   isLoading,
   hasNextPage,
   isFetchingNextPage,
   onLoadMore,
-  isSelected,
   onSelect,
   onMarkRead,
   onUnsubscribe,
 }: ReleaseListProps) {
+  const listRef = useRef<HTMLUListElement>(null)
+  const viewportRef = useRef<HTMLDivElement>(null)
   const selectedRef = useRef<HTMLLIElement>(null)
   const sentinelRef = useRef<HTMLDivElement>(null)
-  const selectedId = items.find(isSelected)?.id
+  const selectedId = items.find((item) => item.repository.id === selectedRepositoryId)?.id
 
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "nearest" })
+    const row = selectedRef.current
+    if (!row) return
+    row.scrollIntoView({ block: "nearest" })
+    // Keep keyboard focus on the selection unless the user is working elsewhere (detail
+    // pane, search, dialogs). After an action removed the focused row, focus is on <body>.
+    const active = document.activeElement
+    if (active === document.body || listRef.current?.contains(active)) {
+      row.querySelector<HTMLButtonElement>("[data-row-button]")?.focus({ preventScroll: true })
+    }
   }, [selectedId])
 
   useEffect(() => {
@@ -57,7 +75,8 @@ export function ReleaseList({
       ([entry]) => {
         if (entry?.isIntersecting && !isFetchingNextPage) onLoadMore()
       },
-      { rootMargin: "400px" }
+      // The list scrolls inside the ScrollArea, so observe relative to its viewport.
+      { root: viewportRef.current, rootMargin: PREFETCH_MARGIN }
     )
     observer.observe(sentinel)
     return () => observer.disconnect()
@@ -67,23 +86,19 @@ export function ReleaseList({
   if (items.length === 0) return <ReleaseListEmpty view={view} search={search} />
 
   return (
-    <ScrollArea className="min-h-0 flex-1">
-      <ul aria-label="Releases" className="flex flex-col">
+    <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
+      <ul ref={listRef} aria-label="Releases" className="flex flex-col">
         {items.map((release) => {
-          const selected = isSelected(release)
+          const selected = release.repository.id === selectedRepositoryId
           return (
             <ReleaseListItem
-              key={release.id}
+              key={release.repository.id}
               ref={selected ? selectedRef : undefined}
               release={release}
               selected={selected}
-              onSelect={() => onSelect(release)}
-              onMarkRead={onMarkRead && (() => onMarkRead(release))}
-              onUnsubscribe={
-                onUnsubscribe && !release.repository.unsubscribed_at
-                  ? () => onUnsubscribe(release)
-                  : undefined
-              }
+              onSelect={onSelect}
+              onMarkRead={onMarkRead}
+              onUnsubscribe={onUnsubscribe}
             />
           )
         })}
@@ -117,6 +132,11 @@ const EMPTY_STATES: Record<View, { icon: LucideIcon; title: string; description:
     icon: CheckCheckIcon,
     title: "You're all caught up",
     description: "New releases from repositories you watch will show up here.",
+  },
+  snoozed: {
+    icon: AlarmClockIcon,
+    title: "Nothing snoozed",
+    description: "Snooze a release to put it aside; it comes back to the inbox when it's time.",
   },
   read: {
     icon: ArchiveIcon,

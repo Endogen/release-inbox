@@ -1,4 +1,6 @@
 import {
+  AlarmClockIcon,
+  AlarmClockOffIcon,
   ArrowLeftIcon,
   BellIcon,
   BellOffIcon,
@@ -8,21 +10,26 @@ import {
   InboxIcon,
   LockIcon,
   TagIcon,
+  ZapIcon,
 } from "lucide-react"
-import type { ReactNode } from "react"
+import { useEffect, useRef, type ReactNode } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
 import { RepoAvatar, UserAvatar } from "@/components/repo-avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
+import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useNow } from "@/hooks/use-now"
 import type { Release } from "@/lib/api/types"
+import { formatAbsolute } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
 import { ReleaseContent, type ContentTab } from "./release-content"
 import { ReleaseVersionSelect } from "./release-version-select"
+import { SnoozeMenu } from "./snooze-menu"
 
 export interface ReleaseDetailActions {
   onToggleNotifications: () => void
@@ -30,33 +37,61 @@ export interface ReleaseDetailActions {
   onMarkUnread: () => void
   onHide: () => void
   onUnsubscribe: () => void
+  onSnooze: (until: Date) => void
+  onUnsnooze: () => void
+}
+
+/** Actions waiting for their undo window to pass. */
+export interface PendingActions {
+  markRead: boolean
+  unsubscribe: boolean
 }
 
 interface ReleaseDetailProps {
   release: Release
   body: string | null | undefined
+  /** Unread inbox releases of the repository (drives "What's new"). */
+  unreadCount: number
   contentTab: ContentTab
   onContentTabChange: (tab: ContentTab) => void
   onSelectRelease: (releaseId: number) => void
   actions: ReleaseDetailActions
+  pending: PendingActions
+  snoozeMenuOpen: boolean
+  onSnoozeMenuOpenChange: (open: boolean) => void
   onBack?: () => void
+  /** Move focus to the title when the release opens (full-screen detail on mobile). */
+  focusOnOpen?: boolean
 }
 
 export function ReleaseDetail({
   release,
   body,
+  unreadCount,
   contentTab,
   onContentTabChange,
   onSelectRelease,
   actions,
+  pending,
+  snoozeMenuOpen,
+  onSnoozeMenuOpenChange,
   onBack,
+  focusOnOpen = false,
 }: ReleaseDetailProps) {
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (focusOnOpen) headingRef.current?.focus()
+  }, [focusOnOpen, release.repository.id])
+
   const { repository } = release
   const title = releaseTitle(release)
+  const now = useNow()
+  const snoozed =
+    release.snoozed_until !== null && new Date(release.snoozed_until).getTime() > now
 
   return (
     <article
-      key={release.id}
+      key={release.repository.id}
       className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in slide-in-from-bottom-1"
     >
       <header className="flex flex-col gap-5 border-b px-6 pt-5 pb-5">
@@ -95,7 +130,11 @@ export function ReleaseDetail({
         </div>
 
         <div className="flex flex-col gap-2.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-balance break-words">
+          <h1
+            ref={headingRef}
+            tabIndex={-1}
+            className="text-2xl font-semibold tracking-tight text-balance break-words outline-none"
+          >
             {title}
           </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
@@ -103,7 +142,26 @@ export function ReleaseDetail({
               <TagIcon data-icon="inline-start" />
               {release.tag_name}
             </Badge>
+            {release.breaking && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="destructive">
+                    <ZapIcon data-icon="inline-start" />
+                    Breaking
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  The notes mention breaking changes, or this is a new major version
+                </TooltipContent>
+              </Tooltip>
+            )}
             {release.prerelease && <Badge variant="secondary">Pre-release</Badge>}
+            {snoozed && release.snoozed_until && (
+              <Badge variant="secondary">
+                <AlarmClockIcon data-icon="inline-start" />
+                Snoozed until {formatAbsolute(release.snoozed_until)}
+              </Badge>
+            )}
             {release.is_hidden && (
               <Badge variant="secondary">
                 <EyeOffIcon data-icon="inline-start" />
@@ -135,9 +193,13 @@ export function ReleaseDetail({
         <div className="flex flex-wrap items-center gap-2">
           {release.read_at === null ? (
             <ActionButton hotkey="e" label="Mark this and older releases as read">
-              <Button size="sm" onClick={actions.onMarkRead}>
-                <CheckIcon data-icon="inline-start" />
-                Mark as read
+              <Button size="sm" onClick={actions.onMarkRead} disabled={pending.markRead}>
+                {pending.markRead ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <CheckIcon data-icon="inline-start" />
+                )}
+                {pending.markRead ? "Marking as read…" : "Mark as read"}
               </Button>
             </ActionButton>
           ) : (
@@ -148,6 +210,26 @@ export function ReleaseDetail({
               </Button>
             </ActionButton>
           )}
+          {release.read_at === null &&
+            (snoozed ? (
+              <ActionButton label="Bring it back to the inbox now">
+                <Button size="sm" variant="outline" onClick={actions.onUnsnooze}>
+                  <AlarmClockOffIcon data-icon="inline-start" />
+                  Unsnooze
+                </Button>
+              </ActionButton>
+            ) : (
+              <SnoozeMenu
+                open={snoozeMenuOpen}
+                onOpenChange={onSnoozeMenuOpenChange}
+                onSnooze={actions.onSnooze}
+                renderTrigger={(trigger) => (
+                  <ActionButton hotkey="s" label="Put it aside until later">
+                    {trigger}
+                  </ActionButton>
+                )}
+              />
+            ))}
           <ActionButton hotkey="h" label="Hide releases of this component">
             <Button size="sm" variant="outline" onClick={actions.onHide}>
               <EyeOffIcon data-icon="inline-start" />
@@ -156,9 +238,18 @@ export function ReleaseDetail({
           </ActionButton>
           {!repository.unsubscribed_at && (
             <ActionButton label="Stop watching this repository on GitHub">
-              <Button size="sm" variant="outline" onClick={actions.onUnsubscribe}>
-                <BellOffIcon data-icon="inline-start" />
-                Unsubscribe
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={actions.onUnsubscribe}
+                disabled={pending.unsubscribe}
+              >
+                {pending.unsubscribe ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <BellOffIcon data-icon="inline-start" />
+                )}
+                {pending.unsubscribe ? "Unsubscribing…" : "Unsubscribe"}
               </Button>
             </ActionButton>
           )}
@@ -187,6 +278,7 @@ export function ReleaseDetail({
       <ReleaseContent
         release={release}
         body={body}
+        unreadCount={unreadCount}
         tab={contentTab}
         onTabChange={onContentTabChange}
       />

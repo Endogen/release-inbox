@@ -3,6 +3,7 @@ import {
   BellIcon,
   BellOffIcon,
   BellRingIcon,
+  CheckIcon,
   EyeOffIcon,
   RefreshCwIcon,
   Trash2Icon,
@@ -12,6 +13,7 @@ import { toast } from "sonner"
 import { RelativeTime } from "@/components/relative-time"
 import { RepoAvatar } from "@/components/repo-avatar"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Empty,
@@ -49,9 +51,15 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { useDeleteHideRule, useHideRules } from "@/features/hide-rules/api"
+import {
+  useNotificationChannels,
+  useSendTestNotification,
+} from "@/features/notifications/api"
 import { usePushNotifications } from "@/features/notifications/use-push-notifications"
+import { usePreferences, useUpdatePreferences } from "@/features/preferences/api"
 import { useMutedRepositories, useSetRepositoryNotifications } from "@/features/repositories/api"
 import { useSyncNow, useSyncStatus } from "@/features/sync/api"
+import type { NotificationChannel } from "@/lib/api/types"
 
 interface SettingsSheetProps {
   open: boolean
@@ -70,6 +78,8 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
           <NotificationSettings />
           <MutedRepositorySettings />
           <Separator />
+          <InboxSettings />
+          <Separator />
           <HideRuleSettings />
           <Separator />
           <SyncSettings />
@@ -79,23 +89,48 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   )
 }
 
+const CHANNEL_LABELS: Record<NotificationChannel["name"], string> = {
+  "web-push": "Browser push",
+  ntfy: "ntfy",
+  telegram: "Telegram",
+}
+
 function NotificationSettings() {
   const push = usePushNotifications()
+  const channels = useNotificationChannels()
+  const sendTest = useSendTestNotification()
+  const preferences = usePreferences()
+  const updatePreferences = useUpdatePreferences()
   const busy = push.enable.isPending || push.disable.isPending
   const unavailableReason =
     push.support === "insecure-context"
-      ? "Notifications need a secure (HTTPS) connection."
+      ? "Browser push needs a secure (HTTPS) connection."
       : push.support === "unsupported"
         ? "This browser doesn't support push notifications. On iOS, add the app to your home screen first."
         : !push.serverEnabled && !push.isLoading
-          ? "Push isn't configured on the server. Set the VAPID keys to enable it."
+          ? "Browser push isn't configured on the server. Set the VAPID keys to enable it."
           : null
+  const serverChannels = channels.data?.filter((channel) => channel.name !== "web-push") ?? []
+  const anyConfigured = channels.data?.some((channel) => channel.configured) ?? false
 
   function toggle(enabled: boolean) {
     const mutation = enabled ? push.enable : push.disable
     mutation.mutate(undefined, {
       onSuccess: () =>
-        toast.success(enabled ? "Notifications turned on" : "Notifications turned off"),
+        toast.success(enabled ? "Browser push turned on" : "Browser push turned off"),
+      onError: (error) => toast.error(error.message),
+    })
+  }
+
+  function test() {
+    sendTest.mutate(undefined, {
+      onSuccess: ({ delivered }) => {
+        const entries = Object.entries(delivered) as [NotificationChannel["name"], boolean][]
+        const failed = entries.filter(([, ok]) => !ok).map(([name]) => CHANNEL_LABELS[name])
+        if (entries.length === 0) toast.error("No notification channel is set up")
+        else if (failed.length > 0) toast.error(`Couldn't deliver via ${failed.join(", ")}`)
+        else toast.success("Test notification sent")
+      },
       onError: (error) => toast.error(error.message),
     })
   }
@@ -105,10 +140,10 @@ function NotificationSettings() {
       <FieldLegend>Notifications</FieldLegend>
       <Field orientation="horizontal" data-disabled={unavailableReason ? true : undefined}>
         <FieldContent>
-          <FieldLabel htmlFor="push-notifications">Push notifications</FieldLabel>
+          <FieldLabel htmlFor="push-notifications">Browser push on this device</FieldLabel>
           <FieldDescription>
             {unavailableReason ??
-              "Get notified on this device as soon as a new release is published, even when the app is closed."}
+              "Get notified as soon as a new release is published, even when the app is closed."}
           </FieldDescription>
         </FieldContent>
         {busy ? (
@@ -122,19 +157,39 @@ function NotificationSettings() {
           />
         )}
       </Field>
-      {push.isSubscribed && (
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="notify-prereleases">Notify for pre-releases</FieldLabel>
+          <FieldDescription>Betas, release candidates and nightly builds.</FieldDescription>
+        </FieldContent>
+        <Switch
+          id="notify-prereleases"
+          checked={preferences.data?.notify_prereleases ?? true}
+          disabled={!preferences.data}
+          onCheckedChange={(checked) =>
+            updatePreferences.mutate({ notify_prereleases: checked })
+          }
+        />
+      </Field>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">Server channels:</span>
+        {serverChannels.map((channel) => (
+          <Badge key={channel.name} variant={channel.configured ? "secondary" : "outline"}>
+            {channel.configured ? <CheckIcon data-icon="inline-start" /> : null}
+            {CHANNEL_LABELS[channel.name]}
+            {!channel.configured && " · not set up"}
+          </Badge>
+        ))}
+      </div>
+      {anyConfigured && (
         <Button
           variant="outline"
           size="sm"
           className="self-start"
-          disabled={push.sendTest.isPending}
-          onClick={() =>
-            push.sendTest.mutate(undefined, {
-              onError: (error) => toast.error(error.message),
-            })
-          }
+          disabled={sendTest.isPending}
+          onClick={test}
         >
-          {push.sendTest.isPending ? (
+          {sendTest.isPending ? (
             <Spinner data-icon="inline-start" />
           ) : (
             <BellRingIcon data-icon="inline-start" />
@@ -142,6 +197,30 @@ function NotificationSettings() {
           Send test notification
         </Button>
       )}
+    </FieldSet>
+  )
+}
+
+function InboxSettings() {
+  const preferences = usePreferences()
+  const updatePreferences = useUpdatePreferences()
+  return (
+    <FieldSet>
+      <FieldLegend>Inbox</FieldLegend>
+      <Field orientation="horizontal">
+        <FieldContent>
+          <FieldLabel htmlFor="show-prereleases">Show pre-releases</FieldLabel>
+          <FieldDescription>
+            When off, pre-releases are left out of every view except Hidden.
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="show-prereleases"
+          checked={preferences.data?.show_prereleases ?? true}
+          disabled={!preferences.data}
+          onCheckedChange={(checked) => updatePreferences.mutate({ show_prereleases: checked })}
+        />
+      </Field>
     </FieldSet>
   )
 }

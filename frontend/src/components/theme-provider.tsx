@@ -10,8 +10,21 @@ import {
 } from "@/lib/theme"
 
 function readStoredTheme(): Theme {
-  const stored = localStorage.getItem(THEME_STORAGE_KEY)
-  return isTheme(stored) ? stored : DEFAULT_THEME
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY)
+    return isTheme(stored) ? stored : DEFAULT_THEME
+  } catch {
+    // Storage can be blocked (privacy settings); fall back to the default.
+    return DEFAULT_THEME
+  }
+}
+
+function storeTheme(theme: Theme): void {
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
+  } catch {
+    // The choice then only lasts for this visit.
+  }
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -29,7 +42,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       theme,
       resolvedTheme,
       setTheme: (next: Theme) => {
-        localStorage.setItem(THEME_STORAGE_KEY, next)
+        storeTheme(next)
         setTheme(next)
       },
     }),

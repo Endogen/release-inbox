@@ -1,10 +1,12 @@
-import { MousePointerClickIcon, SearchXIcon } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { MousePointerClickIcon, RefreshCwIcon, SearchXIcon } from "lucide-react"
+import { useMemo, useRef, useState } from "react"
+import { useDefaultLayout } from "react-resizable-panels"
 import { toast } from "sonner"
 
 import { AppHeader } from "@/components/app-header"
-import { SearchInput } from "@/components/search-input"
+import { SearchBox } from "@/components/search-box"
 import { ShortcutsDialog } from "@/components/shortcuts-dialog"
+import { Button } from "@/components/ui/button"
 import {
   Empty,
   EmptyContent,
@@ -16,92 +18,122 @@ import {
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useDeferredActions } from "@/features/deferred-actions/context"
+import { hiddenRepositories, type DeferredAction } from "@/features/deferred-actions/queue"
 import { HideRuleDialog } from "@/features/hide-rules/components/hide-rule-dialog"
 import { useSetRepositoryNotifications } from "@/features/repositories/api"
 import { SettingsSheet } from "@/features/settings/settings-sheet"
-import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useHotkeys } from "@/hooks/use-hotkeys"
 import { useMediaQuery } from "@/hooks/use-media-query"
-import type { Release } from "@/lib/api/types"
+import { useStableCallback } from "@/hooks/use-stable-callback"
+import { ApiError } from "@/lib/api/client"
+import type { Release, ReleaseListItem as ReleaseListItemData, View } from "@/lib/api/types"
+import { formatAbsolute } from "@/lib/time"
+import { cn } from "@/lib/utils"
 
-import { useMarkUnread, useRelease, useReleaseList, useViewCounts } from "./api"
+import {
+  useMarkReadNow,
+  useMarkUnread,
+  useRelease,
+  useReleaseList,
+  useSnooze,
+  useUnsnooze,
+  useViewCounts,
+} from "./api"
 import type { ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
 import { ViewTabs } from "./components/view-tabs"
 import { releaseTitle } from "./release-title"
-import { useDeferredActions } from "./use-deferred-actions"
 import { useInboxRoute } from "./use-inbox-route"
+import { VIEW_META } from "./view-meta"
 
-const SEARCH_DEBOUNCE_MS = 250
+const CONTENT_TABS: readonly ContentTab[] = ["notes", "changes", "readme"]
+const PANEL_IDS = ["list", "detail"]
 
 export function InboxPage({ username }: { username: string }) {
   const route = useInboxRoute()
+  const { view } = route
   const isDesktop = useMediaQuery("(min-width: 1024px)")
-
-  const [searchText, setSearchText] = useState(route.search)
-  const debouncedSearch = useDebouncedValue(searchText.trim(), SEARCH_DEBOUNCE_MS)
-  const { search, setSearch } = route
-  useEffect(() => {
-    if (debouncedSearch !== search) setSearch(debouncedSearch)
-  }, [debouncedSearch, search, setSearch])
+  const layout = useDefaultLayout({ id: "inbox-layout", panelIds: PANEL_IDS })
 
   const [contentTab, setContentTab] = useState<ContentTab>("notes")
   const [hideTarget, setHideTarget] = useState<Release | null>(null)
+  const [snoozeMenuOpen, setSnoozeMenuOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const list = useReleaseList(route.view, route.search)
+  const list = useReleaseList(view, route.search)
   const counts = useViewCounts(route.search)
   const detail = useRelease(route.releaseId)
-  const deferred = useDeferredActions()
-  const { isHidden } = deferred
+  const { queue, pending } = useDeferredActions()
+
+  // Offset pages can overlap when new releases arrive between loads; keep one entry each.
+  const loaded = useMemo(() => {
+    const byRepository = new Map<number, ReleaseListItemData>()
+    for (const item of list.data?.pages.flatMap((page) => page.items) ?? []) {
+      if (!byRepository.has(item.repository.id)) byRepository.set(item.repository.id, item)
+    }
+    return [...byRepository.values()]
+  }, [list.data])
+  const hidden = useMemo(() => hiddenRepositories(pending, view), [pending, view])
   const items = useMemo(
-    () =>
-      (list.data?.pages.flatMap((page) => page.items) ?? []).filter(
-        (item) => !isHidden(item.repository.id, route.view)
-      ),
-    [list.data, isHidden, route.view]
+    () => loaded.filter((item) => !hidden.has(item.repository.id)),
+    [loaded, hidden]
   )
   const viewCounts = counts.data && {
     ...counts.data,
-    [route.view]: Math.max(
-      0,
-      counts.data[route.view] -
-        deferred.pending.filter((action) => action.hideFrom === route.view).length
-    ),
+    [view]: Math.max(0, counts.data[view] - (loaded.length - items.length)),
   }
 
-  const listItem = items.find((item) => item.id === route.releaseId)
-  const selected: Release | undefined = detail.data ?? listItem
+  const listItem = loaded.find((item) => item.id === route.releaseId)
+  // While another version loads, the previous one stays visible (placeholder data).
+  const current = detail.data?.id === route.releaseId ? detail.data : undefined
+  const selected: Release | undefined =
+    current ?? listItem ?? (detail.isPlaceholderData ? detail.data : undefined)
+  const body = current?.body
+  const repositoryEntry = selected
+    ? loaded.find((item) => item.repository.id === selected.repository.id)
+    : undefined
   const selectedIndex = selected
     ? items.findIndex((item) => item.repository.id === selected.repository.id)
     : -1
 
   const markUnread = useMarkUnread()
+  const markReadNow = useMarkReadNow()
+  const snooze = useSnooze()
+  const unsnooze = useUnsnooze()
   const setNotifications = useSetRepositoryNotifications()
 
-  /** Moves the selection off a release that is about to leave the current view. */
+  const isPending = (kind: "read" | "unsubscribe", repositoryId: number) =>
+    pending.some((action) => action.id === `${kind}-${repositoryId}`)
+
+  /** Moves the selection off a repository that is about to leave the current view. */
   function advanceFrom(release: Release) {
     if (selected?.repository.id !== release.repository.id) return
     if (!isDesktop) {
-      route.selectRelease(null)
+      route.closeRelease()
       return
     }
-    const index = items.findIndex((item) => item.repository.id === release.repository.id)
-    const next = items[index + 1] ?? items[index - 1]
+    const next = items[selectedIndex + 1] ?? items[selectedIndex - 1]
     route.selectRelease(next?.id ?? null)
   }
 
-  /** Undoable: the release and older ones are marked read once the undo toast closes. */
+  /** The entry only disappears if it is acted on as a whole (through its newest release). */
+  function leavesView(release: Release, from: View): boolean {
+    return view === from && repositoryEntry?.id === release.id
+  }
+
+  function schedule(release: Release, action: Omit<DeferredAction, "repositoryId">) {
+    if (action.hideFrom) advanceFrom(release)
+    queue.schedule({ ...action, repositoryId: release.repository.id })
+  }
+
   function handleMarkRead(release: Release) {
-    const leavesView = route.view === "inbox"
-    if (leavesView) advanceFrom(release)
-    deferred.schedule({
+    schedule(release, {
       id: `read-${release.repository.id}`,
-      repositoryId: release.repository.id,
-      hideFrom: leavesView ? route.view : null,
+      hideFrom: leavesView(release, "inbox") ? "inbox" : null,
       path: `/releases/${release.id}/read`,
       message: "Marked as read",
       description: `${release.repository.full_name} · ${releaseTitle(release)}`,
@@ -109,26 +141,11 @@ export function InboxPage({ username }: { username: string }) {
     })
   }
 
-  function handleMarkUnread(release: Release) {
-    if (route.view === "read") advanceFrom(release)
-    markUnread.mutate(
-      { releaseId: release.id, repositoryId: release.repository.id },
-      {
-        onSuccess: () => toast.success("Moved back to the inbox"),
-        onError: (error) => toast.error("Couldn't mark as unread", { description: error.message }),
-      }
-    )
-  }
-
-  /** Undoable: the repository is only unwatched on GitHub once the undo toast closes. */
   function handleUnsubscribe(release: Release) {
     const { repository } = release
-    const leavesView = route.view === "inbox"
-    if (leavesView) advanceFrom(release)
-    deferred.schedule({
+    schedule(release, {
       id: `unsubscribe-${repository.id}`,
-      repositoryId: repository.id,
-      hideFrom: leavesView ? route.view : null,
+      hideFrom: leavesView(release, "inbox") ? "inbox" : null,
       path: `/repositories/${repository.id}/unsubscribe`,
       message: `Unsubscribed from ${repository.full_name}`,
       description: "You won't get notifications from this repository anymore.",
@@ -136,30 +153,78 @@ export function InboxPage({ username }: { username: string }) {
     })
   }
 
+  function handleMarkUnread(release: Release) {
+    if (leavesView(release, "read")) advanceFrom(release)
+    const input = { releaseId: release.id, repositoryId: release.repository.id }
+    markUnread.mutate(input, {
+      onSuccess: () =>
+        toast.success("Moved back to the inbox", {
+          description: `${release.repository.full_name} · ${releaseTitle(release)}`,
+          action: { label: "Undo", onClick: () => markReadNow.mutate(input) },
+        }),
+      onError: (error) => toast.error("Couldn't mark as unread", { description: error.message }),
+    })
+  }
+
+  function handleSnooze(release: Release, until: Date) {
+    if (leavesView(release, "inbox")) advanceFrom(release)
+    const input = { releaseId: release.id, repositoryId: release.repository.id }
+    snooze.mutate(
+      { ...input, until },
+      {
+        onSuccess: () =>
+          toast.success(`Snoozed until ${formatAbsolute(until)}`, {
+            description: `${release.repository.full_name} · ${releaseTitle(release)}`,
+            action: { label: "Undo", onClick: () => unsnooze.mutate(input) },
+          }),
+        onError: (error) => toast.error("Couldn't snooze", { description: error.message }),
+      }
+    )
+  }
+
+  function handleUnsnooze(release: Release) {
+    if (leavesView(release, "snoozed")) advanceFrom(release)
+    unsnooze.mutate(
+      { releaseId: release.id, repositoryId: release.repository.id },
+      {
+        onSuccess: () => toast.success("Back in the inbox"),
+        onError: (error) => toast.error("Couldn't unsnooze", { description: error.message }),
+      }
+    )
+  }
+
   /** Applies immediately (it only affects this app); the toast offers to switch it back. */
   function handleToggleNotifications(release: Release) {
     const { repository } = release
+    if (setNotifications.isPending && setNotifications.variables?.repositoryId === repository.id) {
+      return
+    }
     const enabled = repository.notifications_muted_at !== null
-    const update = (value: boolean) =>
-      setNotifications.mutateAsync({ repositoryId: repository.id, enabled: value })
+    const update = (value: boolean, onSuccess?: () => void) =>
+      setNotifications.mutate(
+        { repositoryId: repository.id, enabled: value },
+        {
+          onSuccess,
+          onError: (error) =>
+            toast.error("Couldn't change notifications", { description: error.message }),
+        }
+      )
 
-    update(enabled).then(
-      () =>
-        toast.success(
-          enabled
-            ? `Notifications on for ${repository.full_name}`
-            : `Notifications off for ${repository.full_name}`,
-          {
-            description: enabled
-              ? "You'll get a push notification for new releases."
-              : "New releases still show up in your inbox, without a push notification.",
-            action: { label: "Undo", onClick: () => void update(!enabled) },
-          }
-        ),
-      (error: Error) =>
-        toast.error("Couldn't change notifications", { description: error.message })
+    update(enabled, () =>
+      toast.success(`Notifications ${enabled ? "on" : "off"} for ${repository.full_name}`, {
+        description: enabled
+          ? "You'll be notified about new releases."
+          : "New releases still show up in your inbox, without a notification.",
+        action: { label: "Undo", onClick: () => update(!enabled) },
+      })
     )
   }
+
+  const openRelease = useStableCallback((release: ReleaseListItemData) =>
+    route.selectRelease(release.id, { push: !isDesktop && route.releaseId === null })
+  )
+  const markReadFromList = useStableCallback(handleMarkRead)
+  const unsubscribeFromList = useStableCallback(handleUnsubscribe)
 
   function moveSelection(delta: 1 | -1) {
     if (items.length === 0) return
@@ -169,40 +234,57 @@ export function InboxPage({ username }: { username: string }) {
     if (next) route.selectRelease(next.id)
   }
 
-  useHotkeys({
-    j: () => moveSelection(1),
-    k: () => moveSelection(-1),
-    e: () => selected?.read_at === null && handleMarkRead(selected),
-    u: () => selected?.read_at && handleMarkUnread(selected),
-    h: () => selected && setHideTarget(selected),
-    m: () => selected && handleToggleNotifications(selected),
-    o: () => selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
-    r: () => setContentTab((tab) => (tab === "notes" ? "readme" : "notes")),
-    "1": () => route.setView("inbox"),
-    "2": () => route.setView("read"),
-    "3": () => route.setView("hidden"),
-    "/": () => searchRef.current?.focus(),
-    "?": () => setShortcutsOpen(true),
-    Escape: () => route.selectRelease(null),
-  })
+  function cycleContentTab() {
+    const available = CONTENT_TABS.filter(
+      (tab) => tab !== "changes" || (repositoryEntry?.older_count ?? 0) > 0
+    )
+    const index = available.indexOf(contentTab)
+    setContentTab(available[(index + 1) % available.length] ?? "notes")
+  }
+
+  const viewHotkeys = Object.fromEntries(
+    (Object.entries(VIEW_META) as [View, (typeof VIEW_META)[View]][]).map(([name, meta]) => [
+      meta.hotkey,
+      () => route.setView(name),
+    ])
+  )
+
+  useHotkeys(
+    {
+      j: () => moveSelection(1),
+      k: () => moveSelection(-1),
+      e: () => selected?.read_at === null && handleMarkRead(selected),
+      u: () => selected?.read_at && handleMarkUnread(selected),
+      s: () => selected?.read_at === null && setSnoozeMenuOpen(true),
+      h: () => selected && setHideTarget(selected),
+      m: () => selected && handleToggleNotifications(selected),
+      o: () => selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
+      r: cycleContentTab,
+      ...viewHotkeys,
+      "/": () => searchRef.current?.focus(),
+      "?": () => setShortcutsOpen(true),
+      Escape: () => route.closeRelease(),
+    },
+    { repeatable: ["j", "k"] }
+  )
 
   const listPane = (
     <section aria-label="Releases" className="flex h-full min-h-0 flex-col">
       <div className="border-b p-3">
-        <ViewTabs view={route.view} counts={viewCounts} onChange={route.setView} />
+        <ViewTabs view={view} counts={viewCounts} search={route.search} />
       </div>
       <ReleaseList
-        view={route.view}
+        view={view}
         search={route.search}
         items={items}
+        selectedRepositoryId={selected?.repository.id}
         isLoading={list.isPending}
         hasNextPage={list.hasNextPage}
         isFetchingNextPage={list.isFetchingNextPage}
         onLoadMore={list.fetchNextPage}
-        isSelected={(item) => item.repository.id === selected?.repository.id}
-        onSelect={(item) => route.selectRelease(item.id)}
-        onMarkRead={route.view === "inbox" ? handleMarkRead : undefined}
-        onUnsubscribe={route.view === "inbox" ? handleUnsubscribe : undefined}
+        onSelect={openRelease}
+        onMarkRead={view === "inbox" ? markReadFromList : undefined}
+        onUnsubscribe={view === "inbox" ? unsubscribeFromList : undefined}
       />
     </section>
   )
@@ -210,26 +292,38 @@ export function InboxPage({ username }: { username: string }) {
   const detailPane = selected ? (
     <ReleaseDetail
       release={selected}
-      body={detail.data?.body}
+      body={selected.id === current?.id ? body : undefined}
+      unreadCount={view === "inbox" && repositoryEntry ? repositoryEntry.older_count + 1 : 0}
       contentTab={contentTab}
       onContentTabChange={setContentTab}
-      onSelectRelease={route.selectRelease}
-      onBack={isDesktop ? undefined : () => route.selectRelease(null)}
+      onSelectRelease={(id) => route.selectRelease(id)}
+      onBack={isDesktop ? undefined : route.closeRelease}
+      focusOnOpen={!isDesktop}
+      snoozeMenuOpen={snoozeMenuOpen}
+      onSnoozeMenuOpenChange={setSnoozeMenuOpen}
+      pending={{
+        markRead: isPending("read", selected.repository.id),
+        unsubscribe: isPending("unsubscribe", selected.repository.id),
+      }}
       actions={{
         onToggleNotifications: () => handleToggleNotifications(selected),
         onMarkRead: () => handleMarkRead(selected),
         onMarkUnread: () => handleMarkUnread(selected),
         onHide: () => setHideTarget(selected),
         onUnsubscribe: () => handleUnsubscribe(selected),
+        onSnooze: (until) => handleSnooze(selected, until),
+        onUnsnooze: () => handleUnsnooze(selected),
       }}
     />
   ) : route.releaseId !== null && detail.isPending ? (
     <DetailSkeleton />
   ) : route.releaseId !== null && detail.isError ? (
-    <MissingRelease />
+    <MissingRelease error={detail.error} onRetry={() => void detail.refetch()} />
   ) : (
     <NoSelection />
   )
+
+  const showDetailOnMobile = route.releaseId !== null
 
   return (
     <div className="flex h-dvh flex-col">
@@ -238,27 +332,35 @@ export function InboxPage({ username }: { username: string }) {
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         search={
-          <SearchInput
+          <SearchBox
             ref={searchRef}
-            value={searchText}
-            onChange={setSearchText}
+            value={route.search}
+            onCommit={route.setSearch}
             placeholder="Search repositories, releases and notes"
           />
         }
       />
       <main className="min-h-0 flex-1">
         {isDesktop ? (
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel defaultSize="38%" minSize={340} maxSize="55%">
+          <ResizablePanelGroup
+            orientation="horizontal"
+            defaultLayout={layout.defaultLayout}
+            onLayoutChanged={layout.onLayoutChanged}
+          >
+            <ResizablePanel id="list" defaultSize="38%" minSize={340} maxSize="55%">
               {listPane}
             </ResizablePanel>
             <ResizableHandle />
-            <ResizablePanel minSize={420}>{detailPane}</ResizablePanel>
+            <ResizablePanel id="detail" minSize={420}>
+              {detailPane}
+            </ResizablePanel>
           </ResizablePanelGroup>
-        ) : route.releaseId !== null ? (
-          detailPane
         ) : (
-          listPane
+          <>
+            {/* The list stays mounted under the detail, so going back keeps its scroll. */}
+            <div className={cn("h-full", showDetailOnMobile && "hidden")}>{listPane}</div>
+            {showDetailOnMobile && detailPane}
+          </>
         )}
       </main>
 
@@ -297,16 +399,24 @@ function NoSelection() {
   )
 }
 
-function MissingRelease() {
+function MissingRelease({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const notFound = error instanceof ApiError && error.status === 404
   return (
     <Empty className="h-full">
       <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <SearchXIcon />
-        </EmptyMedia>
-        <EmptyTitle>Release not found</EmptyTitle>
-        <EmptyDescription>It may have been deleted on GitHub.</EmptyDescription>
+        <EmptyMedia variant="icon">{notFound ? <SearchXIcon /> : <RefreshCwIcon />}</EmptyMedia>
+        <EmptyTitle>{notFound ? "Release not found" : "Couldn't load the release"}</EmptyTitle>
+        <EmptyDescription>
+          {notFound ? "It may have been deleted on GitHub." : "The server didn't respond."}
+        </EmptyDescription>
       </EmptyHeader>
+      {!notFound && (
+        <EmptyContent>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Try again
+          </Button>
+        </EmptyContent>
+      )}
     </Empty>
   )
 }

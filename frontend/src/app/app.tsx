@@ -6,6 +6,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useCurrentUser } from "@/features/auth/api"
+import { DeferredActionsProvider } from "@/features/deferred-actions/provider"
 import { LoginPage } from "@/features/auth/login-page"
 import { useLiveUpdates } from "@/features/live-updates/use-live-updates"
 import { useNotificationNavigation } from "@/features/notifications/use-notification-navigation"
@@ -18,9 +19,11 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider delayDuration={300}>
-          <BrowserRouter>
-            <AuthenticatedApp />
-          </BrowserRouter>
+          <DeferredActionsProvider>
+            <BrowserRouter>
+              <AuthenticatedApp />
+            </BrowserRouter>
+          </DeferredActionsProvider>
           <Toaster position="bottom-center" />
         </TooltipProvider>
       </ThemeProvider>

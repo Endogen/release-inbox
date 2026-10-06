@@ -14,7 +14,10 @@
     <script>
       // Apply the saved theme before first paint to avoid a flash (see src/lib/theme.ts).
       ;(function () {
-        var theme = localStorage.getItem("ghr-theme") || "dark"
+        var theme = "dark"
+        try {
+          theme = localStorage.getItem("ghr-theme") || theme
+        } catch (error) {}
         var dark =
           theme === "dark" ||
           (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)

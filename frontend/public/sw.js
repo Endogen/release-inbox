@@ -6,8 +6,18 @@ self.addEventListener("install", () => self.skipWaiting())
 
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()))
 
+function readMessage(data) {
+  if (!data) return {}
+  try {
+    return data.json()
+  } catch {
+    // Not JSON (e.g. a test push from browser dev tools): show the text as the body.
+    return { body: data.text() }
+  }
+}
+
 self.addEventListener("push", (event) => {
-  const message = event.data ? event.data.json() : {}
+  const message = readMessage(event.data)
   event.waitUntil(
     self.registration.showNotification(message.title ?? "New release", {
       body: message.body,

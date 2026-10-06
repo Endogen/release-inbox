@@ -1,8 +1,8 @@
 /** Types mirroring the backend API schemas (backend/src/ghr/schemas.py). */
 
-export type View = "inbox" | "read" | "hidden"
+export type View = "inbox" | "snoozed" | "read" | "hidden"
 
-export const VIEWS: readonly View[] = ["inbox", "read", "hidden"]
+export const VIEWS: readonly View[] = ["inbox", "snoozed", "read", "hidden"]
 
 export interface Repository {
   id: number
@@ -25,8 +25,12 @@ export interface Release {
   author_login: string | null
   author_avatar_url: string | null
   prerelease: boolean
+  /** The notes announce breaking changes, or the version is a new major version. */
+  breaking: boolean
   published_at: string
   read_at: string | null
+  /** Hidden from the inbox until this time. */
+  snoozed_until: string | null
   is_hidden: boolean
   repository: Repository
 }
@@ -83,6 +87,30 @@ export interface SyncStatus {
 
 export interface CurrentUser {
   username: string
+}
+
+export interface Preferences {
+  show_prereleases: boolean
+  notify_prereleases: boolean
+}
+
+export interface NotificationChannel {
+  name: "web-push" | "ntfy" | "telegram"
+  configured: boolean
+}
+
+export interface NotificationTestResult {
+  delivered: Partial<Record<NotificationChannel["name"], boolean>>
+}
+
+export interface SummaryConfig {
+  enabled: boolean
+  model: string | null
+}
+
+export interface Summary {
+  content: string
+  model: string
 }
 
 export interface PushConfig {

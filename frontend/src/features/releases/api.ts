@@ -25,8 +25,10 @@ export const releaseKeys = {
   lists: () => [...releaseKeys.all, "list"] as const,
   list: (view: View, search: string) => [...releaseKeys.lists(), view, search] as const,
   counts: (search: string) => [...releaseKeys.all, "counts", search] as const,
-  detail: (id: number) => [...releaseKeys.all, "detail", id] as const,
+  details: () => [...releaseKeys.all, "detail"] as const,
+  detail: (id: number) => [...releaseKeys.details(), id] as const,
   history: (repositoryId: number) => [...releaseKeys.all, "history", repositoryId] as const,
+  unread: (repositoryId: number) => [...releaseKeys.all, "unread", repositoryId] as const,
 }
 
 export const readmeKeys = {
@@ -59,11 +61,13 @@ export function useViewCounts(search: string) {
   })
 }
 
+/** A release; while switching to another one, the previous release stays as placeholder. */
 export function useRelease(id: number | null) {
   return useQuery({
     queryKey: releaseKeys.detail(id ?? 0),
     queryFn: ({ signal }) => api.get<ReleaseDetail>(`/releases/${id}`, { signal }),
     enabled: id !== null,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -73,6 +77,16 @@ export function useReleaseHistory(repositoryId: number | undefined) {
     queryFn: ({ signal }) =>
       api.get<ReleaseRef[]>(`/repositories/${repositoryId}/releases`, { signal }),
     enabled: repositoryId !== undefined,
+  })
+}
+
+/** Unread inbox releases of a repository, with notes: what's new since it was last read. */
+export function useUnreadReleases(repositoryId: number | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: releaseKeys.unread(repositoryId ?? 0),
+    queryFn: ({ signal }) =>
+      api.get<ReleaseDetail[]>(`/repositories/${repositoryId}/unread`, { signal }),
+    enabled: enabled && repositoryId !== undefined,
   })
 }
 
@@ -106,15 +120,43 @@ interface ReleaseActionInput {
   repositoryId: number
 }
 
-/** Local only: GitHub has no API to mark a notification unread. */
-export function useMarkUnread() {
+function useReleaseMutation<Input extends ReleaseActionInput>(
+  request: (input: Input) => Promise<void>,
+  removeFrom: View | null
+) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ releaseId }: ReleaseActionInput) => api.post(`/releases/${releaseId}/unread`),
+    mutationFn: request,
     onMutate: async ({ repositoryId }) => {
+      if (removeFrom === null) return
       await queryClient.cancelQueries({ queryKey: releaseKeys.lists() })
-      removeFromList(queryClient, "read", repositoryId)
+      removeFromList(queryClient, removeFrom, repositoryId)
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
   })
+}
+
+/** Local only: GitHub has no API to mark a notification unread. */
+export function useMarkUnread() {
+  return useReleaseMutation(({ releaseId }) => api.post(`/releases/${releaseId}/unread`), "read")
+}
+
+/** Immediate (not deferred) mark as read, used to undo "mark as unread". */
+export function useMarkReadNow() {
+  return useReleaseMutation(({ releaseId }) => api.post(`/releases/${releaseId}/read`), "inbox")
+}
+
+export function useSnooze() {
+  return useReleaseMutation(
+    ({ releaseId, until }: ReleaseActionInput & { until: Date }) =>
+      api.post(`/releases/${releaseId}/snooze`, { until: until.toISOString() }),
+    "inbox"
+  )
+}
+
+export function useUnsnooze() {
+  return useReleaseMutation(
+    ({ releaseId }) => api.delete(`/releases/${releaseId}/snooze`),
+    "snoozed"
+  )
 }

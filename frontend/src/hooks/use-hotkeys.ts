@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react"
 
-const OVERLAY_SELECTOR = "[role=dialog][data-state=open], [role=alertdialog], [role=menu], [role=listbox]"
+const OVERLAY_SELECTOR =
+  "[role=dialog][data-state=open], [role=alertdialog], [role=menu], [role=listbox]"
 
 export type HotkeyMap = Partial<Record<string, (event: KeyboardEvent) => void>>
 
@@ -10,7 +11,9 @@ function isTypingTarget(target: EventTarget | null): boolean {
     target.isContentEditable ||
     target instanceof HTMLInputElement ||
     target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement
+    target instanceof HTMLSelectElement ||
+    // Comboboxes (e.g. the version picker) use typed characters for type-ahead.
+    target.closest("[role=combobox]") !== null
   )
 }
 
@@ -18,11 +21,23 @@ function isTypingTarget(target: EventTarget | null): boolean {
  * Single-key shortcuts (matched against `KeyboardEvent.key`), ignored while typing in a field,
  * while a dialog or menu is open, or when a modifier other than Shift is held.
  */
-export function useHotkeys(hotkeys: HotkeyMap, enabled = true): void {
+export function useHotkeys(
+  hotkeys: HotkeyMap,
+  {
+    enabled = true,
+    repeatable = [],
+  }: {
+    enabled?: boolean
+    /** Keys that keep firing while held down; all others fire once per press. */
+    repeatable?: readonly string[]
+  } = {}
+): void {
+  const repeatableRef = useRef(repeatable)
   const latest = useRef(hotkeys)
 
   useEffect(() => {
     latest.current = hotkeys
+    repeatableRef.current = repeatable
   })
 
   useEffect(() => {
@@ -32,6 +47,7 @@ export function useHotkeys(hotkeys: HotkeyMap, enabled = true): void {
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
       if (isTypingTarget(event.target)) return
       if (document.querySelector(OVERLAY_SELECTOR)) return
+      if (event.repeat && !repeatableRef.current.includes(event.key)) return
 
       const handler = latest.current[event.key]
       if (handler) {

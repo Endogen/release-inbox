@@ -59,6 +59,9 @@ export function useSwipe({ onSwipeLeft, onSwipeRight }: SwipeOptions) {
   }, [])
 
   function onPointerDown(event: PointerEvent<HTMLElement>) {
+    // A touch drag fires no click, so a stale flag from the previous gesture must not
+    // swallow this one.
+    suppressClick.current = false
     if (!enabled || phase === "leaving" || (event.pointerType === "mouse" && event.button !== 0)) {
       return
     }
@@ -104,7 +107,12 @@ export function useSwipe({ onSwipeLeft, onSwipeRight }: SwipeOptions) {
     gesture.current = null
     if (!current.engaged) return
 
+    // Swallow the click the browser may fire right after the drag (mouse), but don't let
+    // the flag outlive this gesture (touch drags fire no click at all).
     suppressClick.current = true
+    setTimeout(() => {
+      suppressClick.current = false
+    }, 0)
     const dx = offsetRef.current
     const handler = handlerFor(dx)
     triggeredRef.current = false

@@ -1,5 +1,5 @@
-import { BellOffIcon, CheckIcon, LockIcon } from "lucide-react"
-import type { Ref } from "react"
+import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon, ZapIcon } from "lucide-react"
+import { memo, type Ref } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
 import { RepoAvatar } from "@/components/repo-avatar"
@@ -8,22 +8,27 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useSwipe, type SwipeDirection } from "@/hooks/use-swipe"
 import type { ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
+import { formatAbsolute } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
 
-interface ReleaseListItemProps {
+export interface ReleaseRowHandlers {
+  onSelect: (release: ReleaseListItemData) => void
+  /** Enables the hover button and swiping left. */
+  onMarkRead?: (release: ReleaseListItemData) => void
+  /** Enables swiping right. */
+  onUnsubscribe?: (release: ReleaseListItemData) => void
+}
+
+interface ReleaseListItemProps extends ReleaseRowHandlers {
   ref?: Ref<HTMLLIElement>
   release: ReleaseListItemData
   selected: boolean
-  onSelect: () => void
-  /** Enables the hover button and swiping left. */
-  onMarkRead?: () => void
-  /** Enables swiping right. */
-  onUnsubscribe?: () => void
 }
 
-export function ReleaseListItem({
+/** Memoized: handlers must be stable (see ``useStableCallback``) to avoid re-rendering. */
+export const ReleaseListItem = memo(function ReleaseListItem({
   ref,
   release,
   selected,
@@ -34,7 +39,11 @@ export function ReleaseListItem({
   const { repository } = release
   const title = releaseTitle(release)
   const showTag = title !== release.tag_name
-  const swipe = useSwipe({ onSwipeLeft: onMarkRead, onSwipeRight: onUnsubscribe })
+  const canUnsubscribe = onUnsubscribe && !repository.unsubscribed_at
+  const swipe = useSwipe({
+    onSwipeLeft: onMarkRead && (() => onMarkRead(release)),
+    onSwipeRight: canUnsubscribe ? () => onUnsubscribe(release) : undefined,
+  })
 
   return (
     <li ref={ref} className="relative overflow-hidden border-b border-border/60">
@@ -54,7 +63,8 @@ export function ReleaseListItem({
       >
         <button
           type="button"
-          onClick={onSelect}
+          data-row-button
+          onClick={() => onSelect(release)}
           aria-current={selected || undefined}
           aria-label={`${repository.full_name} ${title}`}
           className="absolute inset-0 rounded-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
@@ -72,12 +82,18 @@ export function ReleaseListItem({
               format="short"
               className={cn(
                 "pointer-events-auto ml-auto shrink-0 tabular-nums transition-opacity",
-                onMarkRead && "group-hover/row:opacity-0"
+                onMarkRead && "pointer-fine:group-hover/row:opacity-0"
               )}
             />
           </div>
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{title}</span>
+            {release.breaking && (
+              <Badge variant="destructive" className="shrink-0">
+                <ZapIcon data-icon="inline-start" />
+                Breaking
+              </Badge>
+            )}
             {release.prerelease && (
               <Badge variant="outline" className="shrink-0">
                 Pre-release
@@ -91,17 +107,25 @@ export function ReleaseListItem({
                 +{release.older_count} older
               </Badge>
             )}
+            {release.snoozed_until && (
+              <span className="flex shrink-0 items-center gap-1">
+                <AlarmClockIcon className="size-3" aria-hidden />
+                until {formatAbsolute(release.snoozed_until)}
+              </span>
+            )}
           </div>
         </div>
         {onMarkRead && (
+          // Only for mice and trackpads: on touch screens there is no hover, and an invisible
+          // button over the timestamp would catch taps meant to open the release.
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Mark as read"
-                onClick={onMarkRead}
-                className="absolute top-2 right-2 opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
+                onClick={() => onMarkRead(release)}
+                className="absolute top-2 right-2 hidden opacity-0 transition-opacity pointer-fine:inline-flex pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100"
               >
                 <CheckIcon />
               </Button>
@@ -112,7 +136,7 @@ export function ReleaseListItem({
       </div>
     </li>
   )
-}
+})
 
 const SWIPE_ACTIONS = {
   left: {
