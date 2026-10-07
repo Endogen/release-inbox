@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 
 from ghr.db import utcnow
 from ghr.services.snooze import SnoozeWaker
+from ghr.services.stars import StarCounter
 from ghr.services.sync import NotificationSyncService
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,7 @@ class SyncScheduler:
         self,
         sync: NotificationSyncService,
         snoozes: SnoozeWaker,
+        stars: StarCounter,
         *,
         min_interval_seconds: int,
         refresh_interval_seconds: int,
@@ -29,6 +31,7 @@ class SyncScheduler:
     ) -> None:
         self._sync = sync
         self._snoozes = snoozes
+        self._stars = stars
         self._min_interval = min_interval_seconds
         self._refresh_interval = refresh_interval_seconds
         self._refresh_window = refresh_window
@@ -87,6 +90,12 @@ class SyncScheduler:
                 delay = max(delay, self._back_off(refresh.retry_after_seconds))
             except Exception:
                 logger.exception("Unexpected error while refreshing releases")
+            if not self.backing_off:
+                try:
+                    stars = await self._stars.refresh_due()
+                    delay = max(delay, self._back_off(stars.retry_after_seconds))
+                except Exception:
+                    logger.exception("Unexpected error while refreshing star counts")
         return delay
 
     def _back_off(self, retry_after_seconds: int | None) -> float:

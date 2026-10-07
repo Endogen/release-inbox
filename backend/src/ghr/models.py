@@ -31,6 +31,10 @@ class Repository(Base):
     unsubscribed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # Push notifications are on unless muted, so newly watched repositories notify by default.
     notifications_muted_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # Not part of notifications; fetched separately (``ghr.services.stars``).
+    stargazers_count: Mapped[int | None] = mapped_column(Integer)
+    stars_etag: Mapped[str | None] = mapped_column(String(255))
+    stars_checked_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
 class Release(Base):

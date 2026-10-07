@@ -12,7 +12,12 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from ghr.github.models import GitHubReadme, GitHubRelease, NotificationThread
+from ghr.github.models import (
+    GitHubReadme,
+    GitHubRelease,
+    GitHubRepositoryStats,
+    NotificationThread,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +74,12 @@ class NotificationsResult:
 @dataclass(frozen=True, slots=True)
 class FetchedRelease:
     release: GitHubRelease
+    etag: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RepositoryStars:
+    count: int
     etag: str | None
 
 
@@ -173,6 +184,24 @@ class GitHubClient:
         if response.status_code == httpx.codes.NOT_FOUND:
             return
         _raise_for_status(response)
+
+    async def get_repository_stars(
+        self, repository_id: int, *, etag: str | None
+    ) -> RepositoryStars | NotModified | None:
+        """The repository's star count.
+
+        Returns ``None`` if the repository no longer exists and ``NOT_MODIFIED`` if ``etag``
+        still matches.
+        """
+        headers = {"If-None-Match": etag} if etag else {}
+        response = await self._http.get(f"/repositories/{repository_id}", headers=headers)
+        if response.status_code == httpx.codes.NOT_MODIFIED:
+            return NOT_MODIFIED
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        _raise_for_status(response)
+        stats = GitHubRepositoryStats.model_validate(response.json())
+        return RepositoryStars(stats.stargazers_count, response.headers.get("ETag"))
 
     async def get_readme(
         self, repository_id: int, *, etag: str | None

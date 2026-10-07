@@ -54,6 +54,7 @@ Undo. Releases open full screen.
 - **Release notes and README** rendered as GitHub-flavoured markdown, with working anchors,
   footnotes, light/dark logos, and relative images in READMEs of private repositories.
 - **Search** across repositories, release names, tags and notes.
+- **Star counts** next to each repository, refreshed daily.
 - **Notifications where you want them.** Browser push, [ntfy](https://ntfy.sh) and Telegram.
   Every repository you watch notifies you, including ones you start watching later; mute a
   repository with the bell on one of its releases (or `m`).
@@ -88,6 +89,7 @@ That process also runs the poller, so run exactly one instance.
 | `ghr.services.hide_rules`      | Hide rules and their previews                                 |
 | `ghr.services.notifications`   | Web Push, ntfy and Telegram, and what gets announced          |
 | `ghr.services.snooze`          | Ends snoozes and sends reminders                              |
+| `ghr.services.stars`           | Star counts of repositories, refreshed daily                  |
 | `ghr.services.preferences`     | User preferences (pre-release mode)                           |
 | `ghr.services.summaries`       | Claude summaries and their cache                              |
 | `ghr.services.readme`          | README cache with conditional requests                        |

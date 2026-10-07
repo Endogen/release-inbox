@@ -10,6 +10,7 @@ export function makeRepository(overrides: Partial<Repository> = {}): Repository 
     private: false,
     unsubscribed_at: null,
     notifications_muted_at: null,
+    stargazers_count: null,
     ...overrides,
   }
 }

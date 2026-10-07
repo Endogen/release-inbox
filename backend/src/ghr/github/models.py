@@ -23,6 +23,12 @@ class GitHubRepository(_GitHubModel):
     private: bool = False
 
 
+class GitHubRepositoryStats(_GitHubModel):
+    """The part of a full repository the app uses beyond what notifications include."""
+
+    stargazers_count: int
+
+
 class NotificationSubject(_GitHubModel):
     title: str
     url: str | None = None

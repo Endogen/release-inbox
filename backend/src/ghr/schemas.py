@@ -31,6 +31,8 @@ class RepositoryOut(Schema):
     private: bool
     unsubscribed_at: datetime | None
     notifications_muted_at: datetime | None
+    #: ``None`` until it has been fetched.
+    stargazers_count: int | None
 
 
 class RepositoryNotificationsUpdate(BaseModel):

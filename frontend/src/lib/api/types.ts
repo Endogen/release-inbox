@@ -18,6 +18,8 @@ export interface Repository {
   unsubscribed_at: string | null
   /** Set when push notifications for the repository are turned off. */
   notifications_muted_at: string | null
+  /** ``null`` until the server has fetched it. */
+  stargazers_count: number | null
 }
 
 export interface Release {

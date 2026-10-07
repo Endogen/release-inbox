@@ -18,6 +18,7 @@ from ghr import models  # noqa: F401  # registers all tables
 from ghr.cli import alembic_config, cli
 from ghr.db import Base, utcnow
 from ghr.scheduler import SyncScheduler
+from ghr.services.stars import StarRefreshResult
 from ghr.services.sync import RefreshResult, SyncResult
 from tests.conftest import make_settings, migrate
 
@@ -47,13 +48,26 @@ class FakeSnoozes:
         return 0
 
 
+class FakeStars:
+    def __init__(self, result: StarRefreshResult) -> None:
+        self.result = result
+        self.refreshes = 0
+
+    async def refresh_due(self) -> StarRefreshResult:
+        self.refreshes += 1
+        return self.result
+
+
 def scheduler(
-    result: SyncResult, refresh: RefreshResult | None = None
+    result: SyncResult,
+    refresh: RefreshResult | None = None,
+    stars: StarRefreshResult | None = None,
 ) -> tuple[SyncScheduler, FakeSync]:
     sync = FakeSync(result, refresh)
     instance = SyncScheduler(
         sync,  # type: ignore[arg-type]
         FakeSnoozes(),  # type: ignore[arg-type]
+        FakeStars(stars or StarRefreshResult(0)),  # type: ignore[arg-type]
         min_interval_seconds=60,
         refresh_interval_seconds=1800,
         refresh_window=timedelta(days=14),
@@ -99,6 +113,15 @@ class TestScheduler:
         )
 
         assert await instance.run_once() == 900
+        assert instance.backing_off
+
+    async def test_backs_off_after_a_rate_limit_while_counting_stars(self) -> None:
+        instance, _ = scheduler(
+            SyncResult(0, poll_interval_seconds=60),
+            stars=StarRefreshResult(0, retry_after_seconds=300),
+        )
+
+        assert await instance.run_once() == 300
         assert instance.backing_off
 
     async def test_a_sync_requested_during_a_sync_runs_afterwards(self) -> None:

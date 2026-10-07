@@ -18,6 +18,7 @@ from ghr.services.notifications.ntfy import NtfyChannel
 from ghr.services.notifications.telegram import TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
 from ghr.services.snooze import SnoozeWaker
+from ghr.services.stars import StarCounter
 from ghr.services.summaries import ClaudeSummarizer, Summarizer
 from ghr.services.sync import NotificationSyncService
 from ghr.tasks import TaskSupervisor
@@ -38,6 +39,7 @@ class Container:
     notifier: Notifier
     sync: NotificationSyncService
     snoozes: SnoozeWaker
+    stars: StarCounter
     scheduler: SyncScheduler
     summarizer: Summarizer | None
     login_throttle: LoginThrottle
@@ -77,9 +79,11 @@ class Container:
         )
         sync = NotificationSyncService(session_factory, github, broker, notifier, tasks)
         snoozes = SnoozeWaker(session_factory, broker, notifier)
+        stars = StarCounter(session_factory, github, broker)
         scheduler = SyncScheduler(
             sync,
             snoozes,
+            stars,
             min_interval_seconds=settings.poll_interval_seconds,
             refresh_interval_seconds=settings.release_refresh_interval_seconds,
             refresh_window=timedelta(days=settings.release_refresh_days),
@@ -98,6 +102,7 @@ class Container:
             notifier=notifier,
             sync=sync,
             snoozes=snoozes,
+            stars=stars,
             scheduler=scheduler,
             summarizer=summarizer,
             login_throttle=LoginThrottle(
