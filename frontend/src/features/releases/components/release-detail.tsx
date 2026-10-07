@@ -173,24 +173,22 @@ function RepositoryHeading({
     <>
       <RepoAvatar repository={repository} className="size-10" />
       <div className="flex min-w-0 flex-1 flex-col">
-        <a
-          href={repository.html_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-sm font-medium hover:underline"
-        >
-          <span className="truncate">{repository.full_name}</span>
-          {repository.private && (
-            <LockIcon aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />
-          )}
-        </a>
-        {(repository.description || stars !== null) && (
-          <p
-            className="truncate text-xs text-muted-foreground"
-            title={repository.description ?? undefined}
+        <div className="flex min-w-0 items-center gap-2">
+          <a
+            href={repository.html_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-w-0 items-center gap-1.5 text-sm font-medium hover:underline"
           >
-            {stars !== null && <StarCount count={stars} />}
-            {stars !== null && repository.description && " · "}
+            <span className="truncate">{repository.full_name}</span>
+            {repository.private && (
+              <LockIcon aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+          </a>
+          {stars !== null && <StarCount count={stars} className="text-xs text-muted-foreground" />}
+        </div>
+        {repository.description && (
+          <p className="truncate text-xs text-muted-foreground" title={repository.description}>
             {repository.description}
           </p>
         )}
