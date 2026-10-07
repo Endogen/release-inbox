@@ -49,6 +49,7 @@ Undo. Releases open full screen.
   or right to unsubscribe. Both actions, whether you swipe, click or use a shortcut, show a toast with
   **Undo** for six seconds. The change is only sent to GitHub after that, so undoing leaves
   GitHub untouched. When you leave the page or switch apps, pending actions are sent right away.
+- **Copy a release link.** Long-press an entry on a phone, or use the menu of a release (`c`).
 - **AI summaries.** Summarize a release, or everything that's new in a repository, with Claude.
   Summaries are cached and created only when you ask.
 - **Release notes and README** rendered as GitHub-flavoured markdown, with working anchors,

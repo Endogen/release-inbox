@@ -1,4 +1,4 @@
-import { BookMarkedIcon, EllipsisIcon, EyeOffIcon, TagIcon } from "lucide-react"
+import { BookMarkedIcon, EllipsisIcon, EyeOffIcon, LinkIcon, TagIcon } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -17,11 +17,12 @@ import { HOTKEYS } from "../shortcuts"
 
 interface ReleaseMoreMenuProps {
   release: Release
+  onCopyLink: () => void
   onHide: () => void
 }
 
 /** The less frequent actions of a release: links to GitHub and hiding. */
-export function ReleaseMoreMenu({ release, onHide }: ReleaseMoreMenuProps) {
+export function ReleaseMoreMenu({ release, onCopyLink, onHide }: ReleaseMoreMenuProps) {
   const { repository } = release
   return (
     <DropdownMenu>
@@ -49,6 +50,11 @@ export function ReleaseMoreMenu({ release, onHide }: ReleaseMoreMenuProps) {
               <BookMarkedIcon />
               Open repository
             </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onCopyLink}>
+            <LinkIcon />
+            Copy link to release
+            <Shortcut keyName={HOTKEYS.copyLink} />
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

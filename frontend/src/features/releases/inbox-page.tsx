@@ -121,6 +121,7 @@ export function InboxPage({ username }: { username: string }) {
   )
   const markReadFromList = useStableCallback(actions.markRead)
   const unsubscribeFromList = useStableCallback(actions.unsubscribe)
+  const copyLinkFromList = useStableCallback(actions.copyLink)
   // Rows offer the quick actions where entries are unread.
   const rowActions = view === "inbox" || view === "snoozed"
 
@@ -154,6 +155,7 @@ export function InboxPage({ username }: { username: string }) {
       [HOTKEYS.notifications]: () => selected && actions.toggleNotifications(selected),
       [HOTKEYS.open]: () =>
         selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
+      [HOTKEYS.copyLink]: () => selected && actions.copyLink(selected),
       [HOTKEYS.nextTab]: cycleContentTab,
       ...viewHotkeys,
       [HOTKEYS.search]: () => searchRef.current?.focus(),
@@ -182,6 +184,7 @@ export function InboxPage({ username }: { username: string }) {
           onSelect={openRelease}
           onMarkRead={rowActions ? markReadFromList : undefined}
           onUnsubscribe={rowActions ? unsubscribeFromList : undefined}
+          onCopyLink={copyLinkFromList}
         />
       </ErrorBoundary>
     </section>
@@ -212,6 +215,7 @@ export function InboxPage({ username }: { username: string }) {
         onUnsubscribe: () => actions.unsubscribe(selected),
         onSnooze: (until) => actions.snooze(selected, until),
         onUnsnooze: () => actions.unsnooze(selected),
+        onCopyLink: () => actions.copyLink(selected),
       }}
     />
   ) : route.releaseId !== null && detail.isPending ? (

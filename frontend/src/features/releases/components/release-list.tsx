@@ -37,6 +37,7 @@ export function ReleaseList({
   onSelect,
   onMarkRead,
   onUnsubscribe,
+  onCopyLink,
 }: ReleaseListProps) {
   const listRef = useRef<HTMLUListElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -89,6 +90,7 @@ export function ReleaseList({
               onSelect={onSelect}
               onMarkRead={onMarkRead}
               onUnsubscribe={onUnsubscribe}
+              onCopyLink={onCopyLink}
             />
           )
         })}

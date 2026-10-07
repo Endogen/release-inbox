@@ -2,6 +2,7 @@ import { toast } from "sonner"
 
 import { useSetRepositoryNotifications } from "@/features/repositories/api"
 import type { Release, ReleaseListItem, Repository, View } from "@/lib/api/types"
+import { copyToClipboard } from "@/lib/clipboard"
 import { formatAbsolute } from "@/lib/time"
 
 import { useMarkRead, useMarkUnread, useSnooze, useUnsnooze } from "./api"
@@ -139,6 +140,16 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     )
   }
 
+  function copyLink(release: Release) {
+    copyToClipboard(release.html_url).then(
+      () => toast.success("Link copied", { description: releaseLabel(release) }),
+      (error: unknown) =>
+        toast.error("Couldn't copy the link", {
+          description: error instanceof Error ? error.message : undefined,
+        })
+    )
+  }
+
   /** Whether an action is waiting for its undo window to pass. */
   const isPending = {
     markRead: (release: Release) => pending.some((action) => action.id === markReadId(release)),
@@ -146,7 +157,16 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
       pending.some((action) => action.id === unsubscribeId(repository)),
   }
 
-  return { markRead, markUnread, snooze, unsnooze, unsubscribe, toggleNotifications, isPending }
+  return {
+    markRead,
+    markUnread,
+    snooze,
+    unsnooze,
+    unsubscribe,
+    toggleNotifications,
+    copyLink,
+    isPending,
+  }
 }
 
 const markReadId = (release: Release) => `read-${release.id}`

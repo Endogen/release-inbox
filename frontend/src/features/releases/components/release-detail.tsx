@@ -40,6 +40,7 @@ interface ReleaseDetailActions {
   onUnsubscribe: () => void
   onSnooze: (until: Date) => void
   onUnsnooze: () => void
+  onCopyLink: () => void
 }
 
 /** Actions waiting for their undo window to pass. */
@@ -250,7 +251,11 @@ export function ReleaseDetail({
             </ActionButton>
           )}
           <div className="ml-auto">
-            <ReleaseMoreMenu release={release} onHide={actions.onHide} />
+            <ReleaseMoreMenu
+              release={release}
+              onCopyLink={actions.onCopyLink}
+              onHide={actions.onHide}
+            />
           </div>
         </div>
       </header>

@@ -12,6 +12,7 @@ export const HOTKEYS = {
   hide: "h",
   notifications: "m",
   open: "o",
+  copyLink: "c",
   nextTab: "r",
   search: "/",
   close: "Escape",
@@ -29,6 +30,7 @@ export const SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; description: st
   { keys: [HOTKEYS.hide], description: "Hide releases of this component" },
   { keys: [HOTKEYS.notifications], description: "Turn notifications for the repository on or off" },
   { keys: [HOTKEYS.open], description: "Open the release on GitHub" },
+  { keys: [HOTKEYS.copyLink], description: "Copy the link to the release" },
   { keys: [HOTKEYS.nextTab], description: "Next tab: notes, what's new, README" },
   {
     keys: VIEWS.map((view) => VIEW_META[view].hotkey),

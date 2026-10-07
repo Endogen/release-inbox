@@ -6,7 +6,7 @@ import { RepoAvatar } from "@/components/avatars"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useSwipe, type SwipeDirection } from "@/hooks/use-swipe"
+import { useRowGestures, type SwipeDirection } from "@/hooks/use-row-gestures"
 import type { ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { formatCount } from "@/lib/format-count"
 import { formatAbsolute } from "@/lib/time"
@@ -21,6 +21,8 @@ export interface ReleaseRowHandlers {
   onMarkRead?: (release: ReleaseListItemData) => void
   /** Enables swiping right. */
   onUnsubscribe?: (release: ReleaseListItemData) => void
+  /** Enables a long press (touch screens). */
+  onCopyLink?: (release: ReleaseListItemData) => void
 }
 
 interface ReleaseListItemProps extends ReleaseRowHandlers {
@@ -37,30 +39,33 @@ export const ReleaseListItem = memo(function ReleaseListItem({
   onSelect,
   onMarkRead,
   onUnsubscribe,
+  onCopyLink,
 }: ReleaseListItemProps) {
   const { repository } = release
   const title = releaseTitle(release)
   const showTag = title !== release.tag_name
   const canUnsubscribe = onUnsubscribe && !repository.unsubscribed_at
-  const swipe = useSwipe({
+  const gestures = useRowGestures({
     onSwipeLeft: onMarkRead && (() => onMarkRead(release)),
     onSwipeRight: canUnsubscribe ? () => onUnsubscribe(release) : undefined,
+    onLongPress: onCopyLink && (() => onCopyLink(release)),
   })
 
   return (
     <li ref={ref} className="relative overflow-hidden border-b border-border/60">
-      {swipe.direction && <SwipeAction direction={swipe.direction} armed={swipe.armed} />}
+      {gestures.direction && <SwipeAction direction={gestures.direction} armed={gestures.armed} />}
       <div
-        {...swipe.handlers}
+        {...gestures.handlers}
         data-selected={selected || undefined}
-        style={{ transform: swipe.offset ? `translateX(${swipe.offset}px)` : undefined }}
+        data-held={gestures.held || undefined}
+        style={{ transform: gestures.offset ? `translateX(${gestures.offset}px)` : undefined }}
         className={cn(
-          "group/row relative flex touch-pan-y gap-3 bg-background px-4 py-3",
+          // No text selection or callout menu: a long press on the row copies its link.
+          "group/row relative flex touch-pan-y gap-3 bg-background px-4 py-3 select-none [-webkit-touch-callout:none]",
           "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary before:opacity-0 before:transition-opacity",
-          "hover:bg-muted/50 data-selected:bg-muted data-selected:before:opacity-100",
-          swipe.phase === "dragging"
-            ? "select-none"
-            : "transition-[transform,background-color] duration-200 ease-out"
+          "hover:bg-muted/50 data-held:bg-muted data-selected:bg-muted data-selected:before:opacity-100",
+          gestures.phase !== "dragging" &&
+            "transition-[transform,background-color] duration-200 ease-out"
         )}
       >
         <button
