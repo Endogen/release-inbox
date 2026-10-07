@@ -19,15 +19,28 @@ function readMessage(data) {
 self.addEventListener("push", (event) => {
   const message = readMessage(event.data)
   event.waitUntil(
-    self.registration.showNotification(message.title ?? "New release", {
-      body: message.body,
-      tag: message.tag,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/badge-96.png",
-      data: { url: message.url ?? DEFAULT_URL },
-    })
+    Promise.all([
+      self.registration.showNotification(message.title ?? "New release", {
+        body: message.body,
+        tag: message.tag,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/badge-96.png",
+        data: { url: message.url ?? DEFAULT_URL },
+      }),
+      updateAppBadge(message.unread),
+    ])
   )
 })
+
+// The installed app's icon shows the number of inbox entries, also while the app is closed.
+async function updateAppBadge(unread) {
+  if (typeof unread !== "number" || !("setAppBadge" in self.navigator)) return
+  try {
+    await (unread > 0 ? self.navigator.setAppBadge(unread) : self.navigator.clearAppBadge())
+  } catch {
+    // Not allowed here (e.g. the app isn't installed); the badge is an extra.
+  }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close()

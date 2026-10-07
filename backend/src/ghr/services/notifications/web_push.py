@@ -79,6 +79,7 @@ class WebPushChannel:
                 "body": notification.body,
                 "url": notification.path,
                 "tag": notification.tag,
+                "unread": notification.unread,
             }
         )
         results = await gather_limited(

@@ -6,13 +6,14 @@ import { ErrorBoundary } from "@/components/error-boundary"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { AppHeader } from "@/features/shell/app-header"
 import { SyncBanner } from "@/features/sync/sync-banner"
+import { useAppBadge } from "@/hooks/use-app-badge"
 import { useHasOpened } from "@/hooks/use-has-opened"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useStableCallback } from "@/hooks/use-stable-callback"
 import type { Release, ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { MEDIA } from "@/lib/breakpoints"
 
-import { useRelease } from "./api"
+import { useRelease, useViewCounts } from "./api"
 import { CONTENT_TABS, type ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
@@ -62,6 +63,8 @@ export function InboxPage({ username }: { username: string }) {
 
   const { list, loaded, items, viewCounts } = useInboxEntries(view, route.search)
   const detail = useRelease(route.releaseId)
+  // The installed app's icon shows the inbox entries, whatever the search.
+  useAppBadge(useViewCounts("").data?.inbox)
 
   // While another version loads, the previous one stays visible (placeholder data).
   const current = detail.data?.id === route.releaseId ? detail.data : undefined

@@ -19,7 +19,7 @@ from ghr.schemas import (
     RepositoryOut,
     ViewCounts,
 )
-from ghr.services.filters import in_view, is_hidden, matches_search
+from ghr.services.filters import ViewContext, in_view, is_hidden, matches_search
 from ghr.services.preferences import load_view_context
 
 #: Upper bound for the combined "what's new" notes of one repository.
@@ -76,16 +76,19 @@ class ReleaseQueries:
     async def count_by_view(self, *, search: str | None) -> ViewCounts:
         """Number of repositories with at least one release in each view."""
         context = await load_view_context(self._session)
-        search_filter = matches_search(search)
-        counts: dict[View, int] = {}
-        for view in View:
-            statement = (
-                select(func.count(func.distinct(Release.repository_id)))
-                .join(Repository)
-                .where(in_view(view, context), search_filter)
-            )
-            counts[view] = await self._session.scalar(statement) or 0
-        return ViewCounts(**counts)
+        return ViewCounts(**{view: await self._count(view, context, search) for view in View})
+
+    async def count(self, view: View) -> int:
+        """Number of repositories with at least one release in the view."""
+        return await self._count(view, await load_view_context(self._session), search=None)
+
+    async def _count(self, view: View, context: ViewContext, search: str | None) -> int:
+        statement = (
+            select(func.count(func.distinct(Release.repository_id)))
+            .join(Repository)
+            .where(in_view(view, context), matches_search(search))
+        )
+        return await self._session.scalar(statement) or 0
 
     async def get(self, release_id: int) -> ReleaseDetail:
         context = await load_view_context(self._session)

@@ -3,12 +3,13 @@
 import asyncio
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import contains_eager
 
-from ghr.domain import PrereleaseMode
+from ghr.domain import PrereleaseMode, View
 from ghr.models import Release, Repository
 from ghr.services.filters import is_hidden
 from ghr.services.notifications.message import (
@@ -17,6 +18,7 @@ from ghr.services.notifications.message import (
     NotificationChannel,
 )
 from ghr.services.preferences import load_preferences
+from ghr.services.releases import ReleaseQueries
 
 logger = logging.getLogger(__name__)
 
@@ -83,12 +85,18 @@ class Notifier:
                 statement = statement.where(Release.prerelease.is_(False))
             releases = list(await session.scalars(statement))
         if releases:
-            await self.send(_new_releases_notification(releases))
+            await self._announce(_new_releases_notification(releases))
 
     async def announce_snooze_ended(self, releases: Sequence[Release]) -> None:
         """Remind about snoozed releases; the user asked for this, so mutes don't apply."""
         if releases:
-            await self.send(_snooze_ended_notification(releases))
+            await self._announce(_snooze_ended_notification(releases))
+
+    async def _announce(self, notification: Notification) -> None:
+        """Send with the number of inbox entries, which installed apps show on their icon."""
+        async with self._session_factory() as session:
+            unread = await ReleaseQueries(session).count(View.INBOX)
+        await self.send(replace(notification, unread=unread))
 
 
 def _title(release: Release) -> str:

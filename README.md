@@ -67,7 +67,8 @@ Undo. Releases open full screen.
   promoted to a stable release notifies you again.
 - **Keyboard driven.** `j`/`k` navigate, `e` marks as read, `s` snoozes, `h` hides, `o` opens on
   GitHub, `/` searches, and `?` lists all shortcuts.
-- Light and dark theme, responsive layout, installable as an app.
+- Light and dark theme, responsive layout, installable as an app that shows the number of
+  inbox entries on its icon.
 
 ## Architecture
 
@@ -129,6 +130,9 @@ That process also runs the poller, so run exactly one instance.
   release name and tag of one repository. New releases that match are hidden as well.
 - **Browser push** needs HTTPS. On iOS, add the site to the home screen first (Safari → Share →
   Add to Home Screen), then turn it on in the app's settings. ntfy and Telegram work anywhere.
+- **The count on the app icon** needs the app installed (Chrome or Edge: Install app; Safari:
+  Add to Dock or Home Screen). While the app is closed, browser push keeps it up to date; on iOS
+  it only shows once notifications are allowed.
 - **Summaries** send the release notes to the Anthropic API and are billed to your API key.
 
 ## Local development

@@ -4,6 +4,7 @@ import base64
 import json
 import os
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -161,6 +162,7 @@ class TestAnnouncementFilters:
 
         assert [notification.title for notification in sent] == ["2 new releases"]
         assert sent[0].body == "acme/tool, acme/app"
+        assert sent[0].unread == 2  # inbox entries, for the badge on the app icon
 
     @pytest.mark.parametrize("mode", ["mute", "hide"])
     async def test_skips_prereleases_unless_shown_normally(
@@ -205,7 +207,7 @@ async def test_channels_and_test_notification_endpoints(
     assert sent[0].tag == "test"
 
 
-async def test_web_push_removes_expired_subscriptions(
+async def test_web_push_sends_json_and_removes_expired_subscriptions(
     container: Container, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     channel = WebPushChannel(
@@ -214,13 +216,23 @@ async def test_web_push_removes_expired_subscriptions(
     await channel.subscribe("https://push.example/alive", "p256dh", "auth")
     await channel.subscribe("https://push.example/gone", "p256dh", "auth")
 
-    async def fake_webpush(*, subscription_info: dict[str, object], **_: object) -> None:
+    payloads: list[str] = []
+
+    async def fake_webpush(*, subscription_info: dict[str, object], data: str, **_: object) -> None:
+        payloads.append(data)
         if str(subscription_info["endpoint"]).endswith("gone"):
             raise WebPushException("gone", response=SimpleNamespace(status_code=410))
 
     monkeypatch.setattr("ghr.services.notifications.web_push.webpush_async", fake_webpush)
 
-    assert await channel.send(NOTIFICATION)
+    assert await channel.send(replace(NOTIFICATION, unread=3))
+    assert json.loads(payloads[0]) == {
+        "title": NOTIFICATION.title,
+        "body": NOTIFICATION.body,
+        "url": NOTIFICATION.path,
+        "tag": NOTIFICATION.tag,
+        "unread": 3,
+    }
     async with container.session_factory() as session:
         endpoints = set(await session.scalars(select(PushSubscription.endpoint)))
     assert endpoints == {"https://push.example/alive"}

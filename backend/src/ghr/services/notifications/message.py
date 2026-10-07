@@ -16,6 +16,8 @@ class Notification:
     external_url: str
     #: Notifications with the same tag replace each other on the device.
     tag: str
+    #: Entries in the inbox when it was sent; installed apps show the number on their icon.
+    unread: int | None = None
 
     def link(self, public_url: str | None) -> str:
         """Into the app if its address is known, else to GitHub."""
