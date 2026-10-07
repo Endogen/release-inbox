@@ -20,18 +20,30 @@ interface SnoozeMenuProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSnooze: (until: Date) => void
+  /** Shows the trigger without its label, where space is short. */
+  iconOnly?: boolean
   /** Wraps the trigger, e.g. in a tooltip. */
   renderTrigger?: (trigger: ReactNode) => ReactNode
 }
 
-export function SnoozeMenu({ open, onOpenChange, onSnooze, renderTrigger }: SnoozeMenuProps) {
+export function SnoozeMenu({
+  open,
+  onOpenChange,
+  onSnooze,
+  iconOnly = false,
+  renderTrigger,
+}: SnoozeMenuProps) {
   const now = useNow()
   const options = useMemo(() => snoozeOptions(new Date(now)), [now])
   const trigger = (
     <DropdownMenuTrigger asChild>
-      <Button size="sm" variant="outline">
-        <AlarmClockIcon data-icon="inline-start" />
-        Snooze
+      <Button
+        size={iconOnly ? "icon-sm" : "sm"}
+        variant="outline"
+        aria-label={iconOnly ? "Snooze" : undefined}
+      >
+        <AlarmClockIcon data-icon={iconOnly ? undefined : "inline-start"} />
+        {!iconOnly && "Snooze"}
       </Button>
     </DropdownMenuTrigger>
   )

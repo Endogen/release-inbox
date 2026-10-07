@@ -52,9 +52,12 @@ export function SearchBox({ ref, value, onCommit }: SearchBoxProps) {
       <InputGroupInput
         ref={ref}
         type="search"
+        enterKeyHint="search"
         value={text}
         placeholder="Search releases"
         aria-label="Search releases"
+        // Chrome and Safari add their own clear button; the one below works in every browser.
+        className="[&::-webkit-search-cancel-button]:hidden"
         onChange={(event) => setText(event.target.value)}
         onKeyDown={(event) => {
           if (event.key !== "Escape") return

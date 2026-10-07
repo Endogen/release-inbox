@@ -4,12 +4,10 @@ import {
   ArrowLeftIcon,
   BellIcon,
   BellOffIcon,
-  BookMarkedIcon,
   CheckIcon,
   EyeOffIcon,
   InboxIcon,
   LockIcon,
-  TagIcon,
 } from "lucide-react"
 import { useEffect, useRef, type ReactNode } from "react"
 
@@ -20,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Kbd } from "@/components/ui/kbd"
 import { Spinner } from "@/components/ui/spinner"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useMediaQuery } from "@/hooks/use-media-query"
 import { useNow } from "@/hooks/use-now"
 import type { Release } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
@@ -29,6 +28,7 @@ import { HOTKEYS, keyLabel } from "../shortcuts"
 import { canSnooze, viewOf } from "../release-view"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 import { ReleaseContent, type ContentTab } from "./release-content"
+import { ReleaseMoreMenu } from "./release-more-menu"
 import { ReleaseVersionSelect } from "./release-version-select"
 import { SnoozeMenu } from "./snooze-menu"
 
@@ -90,6 +90,11 @@ export function ReleaseDetail({
   const { repository } = release
   const title = releaseTitle(release)
   const now = useNow()
+  // The row stays one line: on narrow phones, secondary actions show only their icon.
+  const labels = {
+    unsubscribe: useMediaQuery("(min-width: 25.5rem)"),
+    snooze: useMediaQuery("(min-width: 20.5rem)"),
+  }
   const view = viewOf(release, now)
 
   return (
@@ -184,7 +189,8 @@ export function ReleaseDetail({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* One row on every screen: the frequent actions, and a menu for the rest. */}
+        <div className="flex items-center gap-2">
           {release.read_at === null ? (
             <ActionButton hotkey={HOTKEYS.markRead} label="Mark this and older releases as read">
               <Button size="sm" onClick={actions.onMarkRead} aria-busy={pending.markRead}>
@@ -217,6 +223,7 @@ export function ReleaseDetail({
                 open={snoozeMenuOpen}
                 onOpenChange={onSnoozeMenuOpenChange}
                 onSnooze={actions.onSnooze}
+                iconOnly={!labels.snooze}
                 renderTrigger={(trigger) => (
                   <ActionButton hotkey={HOTKEYS.snooze} label="Put it aside until later">
                     {trigger}
@@ -224,47 +231,26 @@ export function ReleaseDetail({
                 )}
               />
             ))}
-          <ActionButton hotkey={HOTKEYS.hide} label="Hide releases of this component">
-            <Button size="sm" variant="outline" onClick={actions.onHide}>
-              <EyeOffIcon data-icon="inline-start" />
-              Hide…
-            </Button>
-          </ActionButton>
           {!repository.unsubscribed_at && (
             <ActionButton label="Stop watching this repository on GitHub">
               <Button
-                size="sm"
+                size={labels.unsubscribe ? "sm" : "icon-sm"}
                 variant="outline"
                 onClick={actions.onUnsubscribe}
                 aria-busy={pending.unsubscribe}
+                aria-label={labels.unsubscribe ? undefined : "Unsubscribe"}
               >
                 {pending.unsubscribe ? (
-                  <Spinner data-icon="inline-start" />
+                  <Spinner data-icon={labels.unsubscribe ? "inline-start" : undefined} />
                 ) : (
-                  <BellOffIcon data-icon="inline-start" />
+                  <BellOffIcon data-icon={labels.unsubscribe ? "inline-start" : undefined} />
                 )}
-                {pending.unsubscribe ? "Unsubscribing…" : "Unsubscribe"}
+                {labels.unsubscribe && (pending.unsubscribe ? "Unsubscribing…" : "Unsubscribe")}
               </Button>
             </ActionButton>
           )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <ActionButton hotkey={HOTKEYS.open} label="Open the release on GitHub">
-              <Button size="sm" variant="ghost" asChild>
-                <a href={release.html_url} target="_blank" rel="noopener noreferrer">
-                  <TagIcon data-icon="inline-start" />
-                  Release
-                </a>
-              </Button>
-            </ActionButton>
-            <ActionButton label="Open the repository on GitHub">
-              <Button size="sm" variant="ghost" asChild>
-                <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
-                  <BookMarkedIcon data-icon="inline-start" />
-                  Repository
-                </a>
-              </Button>
-            </ActionButton>
+          <div className="ml-auto">
+            <ReleaseMoreMenu release={release} onHide={actions.onHide} />
           </div>
         </div>
       </header>

@@ -28,7 +28,7 @@ export function ViewTabs({ view, counts, search }: ViewTabsProps) {
             asChild
             size="sm"
             variant={active ? "secondary" : "ghost"}
-            className="flex-1 @max-xs:px-1.5"
+            className="h-8 flex-1 @max-xs:px-1.5"
           >
             <Link to={viewPath(item, search)} aria-current={active ? "page" : undefined}>
               {/* A narrow list needs the room for the labels and counts. */}
