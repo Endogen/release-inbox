@@ -23,14 +23,17 @@ import { useNow } from "@/hooks/use-now"
 import type { Release } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
 
+import { useReleaseAssets } from "../api"
 import { releaseTitle } from "../release-title"
 import { HOTKEYS, keyLabel } from "../shortcuts"
 import { canSnooze, viewOf } from "../release-view"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 import { ReleaseContent, type ContentTab } from "./release-content"
+import { ReleaseDownloads } from "./release-downloads"
 import { ReleaseMoreMenu } from "./release-more-menu"
 import { ReleaseVersionSelect } from "./release-version-select"
 import { SnoozeMenu } from "./snooze-menu"
+import { StarCount } from "./star-count"
 
 interface ReleaseDetailActions {
   onToggleNotifications: () => void
@@ -66,6 +69,8 @@ interface ReleaseDetailProps {
   onBack?: () => void
   /** Move focus to the title when the release opens (full-screen detail on mobile). */
   focusOnOpen?: boolean
+  /** Show the repository's stars; the list shows them where it is next to the detail. */
+  showStars?: boolean
 }
 
 export function ReleaseDetail({
@@ -82,6 +87,7 @@ export function ReleaseDetail({
   onSnoozeMenuOpenChange,
   onBack,
   focusOnOpen = false,
+  showStars = false,
 }: ReleaseDetailProps) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
@@ -89,12 +95,17 @@ export function ReleaseDetail({
   }, [focusOnOpen, release.repository.id])
 
   const { repository } = release
+  const stars = showStars ? repository.stargazers_count : null
   const title = releaseTitle(release)
   const now = useNow()
-  // The row stays one line: on narrow phones, secondary actions show only their icon.
+  const assets = useReleaseAssets(release.id).data ?? []
+  // The row stays one line: on narrow phones, secondary actions show only their icon. The
+  // download button, shown when there are files, takes about 3.75rem of it.
+  const extra = assets.length > 0 ? 3.75 : 0
   const labels = {
-    unsubscribe: useMediaQuery("(min-width: 25.5rem)"),
-    snooze: useMediaQuery("(min-width: 20.5rem)"),
+    unsubscribe: useMediaQuery(`(min-width: ${25.5 + extra}rem)`),
+    snooze: useMediaQuery(`(min-width: ${20.5 + extra}rem)`),
+    downloads: useMediaQuery("(min-width: 22rem)"),
   }
   const view = viewOf(release, now)
 
@@ -123,8 +134,13 @@ export function ReleaseDetail({
                 />
               )}
             </a>
-            {repository.description && (
-              <p className="truncate text-xs text-muted-foreground" title={repository.description}>
+            {(repository.description || stars !== null) && (
+              <p
+                className="truncate text-xs text-muted-foreground"
+                title={repository.description ?? undefined}
+              >
+                {stars !== null && <StarCount count={stars} />}
+                {stars !== null && repository.description && " · "}
                 {repository.description}
               </p>
             )}
@@ -249,6 +265,9 @@ export function ReleaseDetail({
                 {labels.unsubscribe && (pending.unsubscribe ? "Unsubscribing…" : "Unsubscribe")}
               </Button>
             </ActionButton>
+          )}
+          {assets.length > 0 && (
+            <ReleaseDownloads release={release} assets={assets} showCount={labels.downloads} />
           )}
           <div className="ml-auto">
             <ReleaseMoreMenu

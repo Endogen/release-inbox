@@ -48,6 +48,17 @@ class NotificationThread(_GitHubModel):
         return self.subject.type == "Release" and self.subject.url is not None
 
 
+class GitHubAsset(_GitHubModel):
+    id: int
+    name: str
+    size: int
+    download_count: int = 0
+    browser_download_url: str
+    content_type: str | None = None
+    #: "uploaded", or "open" while an upload is still in progress.
+    state: str = "uploaded"
+
+
 class GitHubRelease(_GitHubModel):
     id: int
     tag_name: str
@@ -59,6 +70,7 @@ class GitHubRelease(_GitHubModel):
     draft: bool = False
     created_at: datetime
     published_at: datetime | None = None
+    assets: list[GitHubAsset] = []
 
 
 class GitHubReadme(_GitHubModel):

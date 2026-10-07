@@ -15,6 +15,7 @@ from ghr.security import (
     credential_fingerprint,
     is_same_origin_request,
 )
+from ghr.services.assets import ReleaseAssetService
 from ghr.services.hide_rules import HideRuleService
 from ghr.services.inbox import InboxService
 from ghr.services.preferences import PreferencesService
@@ -74,6 +75,10 @@ async def get_release_queries(session: SessionDep) -> ReleaseQueries:
     return ReleaseQueries(session)
 
 
+async def get_asset_service(session: SessionDep, container: ContainerDep) -> ReleaseAssetService:
+    return ReleaseAssetService(session, container.github)
+
+
 async def get_inbox_service(session: SessionDep, container: ContainerDep) -> InboxService:
     return InboxService(session, container.github, container.broker)
 
@@ -104,6 +109,7 @@ async def get_readme_service(session: SessionDep, container: ContainerDep) -> Re
 
 ReleaseQueriesDep = Annotated[ReleaseQueries, Depends(get_release_queries)]
 InboxServiceDep = Annotated[InboxService, Depends(get_inbox_service)]
+AssetServiceDep = Annotated[ReleaseAssetService, Depends(get_asset_service)]
 HideRuleServiceDep = Annotated[HideRuleService, Depends(get_hide_rule_service)]
 ReadmeServiceDep = Annotated[ReadmeService, Depends(get_readme_service)]
 RepositoryServiceDep = Annotated[RepositoryService, Depends(get_repository_service)]

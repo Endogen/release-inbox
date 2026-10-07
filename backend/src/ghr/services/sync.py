@@ -29,6 +29,7 @@ from ghr.github.models import GitHubRelease, GitHubRepository, NotificationThrea
 from ghr.models import Release, Repository, SyncState
 from ghr.schemas import SyncStatus
 from ghr.services import breaking
+from ghr.services.assets import asset_records
 from ghr.services.notifications import Notifier
 from ghr.tasks import TaskSupervisor
 
@@ -432,9 +433,13 @@ def _new_release(
 
 def _apply_changes(release: Release, item: FetchedRelease) -> bool:
     """Update a stored release from GitHub. Returns whether anything visible changed."""
-    before = (release.tag_name, release.name, release.body, release.prerelease)
+
+    def visible() -> tuple[object, ...]:
+        return (release.tag_name, release.name, release.body, release.prerelease, release.assets)
+
+    before = visible()
     _copy_release_fields(release, item.release, item.etag)
-    return before != (release.tag_name, release.name, release.body, release.prerelease)
+    return before != visible()
 
 
 def _copy_release_fields(release: Release, source: GitHubRelease, etag: str | None) -> None:
@@ -445,6 +450,7 @@ def _copy_release_fields(release: Release, source: GitHubRelease, etag: str | No
     release.author_login = source.author.login if source.author else None
     release.author_avatar_url = source.author.avatar_url if source.author else None
     release.prerelease = source.prerelease
+    release.assets = asset_records(source)
     release.etag = etag
 
 

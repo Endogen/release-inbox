@@ -21,6 +21,8 @@ class FakeRelease:
     unread: bool = True
     prerelease: bool = False
     draft: bool = False
+    #: File names of attached assets.
+    assets: tuple[str, ...] = ()
 
     @property
     def thread_id(self) -> str:
@@ -66,6 +68,21 @@ class FakeRelease:
             "draft": self.draft,
             "created_at": self.published_at,
             "published_at": self.published_at,
+            "assets": [
+                {
+                    "id": self.id * 100 + index,
+                    "name": name,
+                    "size": 1024 * (index + 1),
+                    "download_count": index,
+                    "browser_download_url": (
+                        f"https://github.com/{self.full_name}/releases/download/"
+                        f"{self.tag_name}/{name}"
+                    ),
+                    "content_type": "application/octet-stream",
+                    "state": "uploaded",
+                }
+                for index, name in enumerate(self.assets)
+            ],
         }
 
 

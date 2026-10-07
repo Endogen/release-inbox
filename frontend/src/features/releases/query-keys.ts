@@ -8,6 +8,7 @@ export const releaseKeys = {
   counts: (search: string) => [...releaseKeys.all, "counts", search] as const,
   details: () => [...releaseKeys.all, "detail"] as const,
   detail: (id: number) => [...releaseKeys.details(), id] as const,
+  assets: (id: number) => [...releaseKeys.all, "assets", id] as const,
   history: (repositoryId: number) => [...releaseKeys.all, "history", repositoryId] as const,
   unread: (repositoryId: number, search: string) =>
     [...releaseKeys.all, "unread", repositoryId, search] as const,

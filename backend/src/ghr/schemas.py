@@ -59,6 +59,16 @@ class ReleaseListItem(ReleaseOut):
     older_count: int = Field(description="Further releases of the repository in the same view.")
 
 
+class ReleaseAssetOut(Schema):
+    id: int
+    name: str
+    size: int
+    download_count: int
+    #: Download link on github.com.
+    url: str
+    content_type: str | None
+
+
 class ReleaseDetail(ReleaseOut):
     body: str | None
 

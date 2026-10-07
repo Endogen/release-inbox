@@ -50,6 +50,8 @@ Undo. Releases open full screen.
   **Undo** for six seconds. The change is only sent to GitHub after that, so undoing leaves
   GitHub untouched. When you leave the page or switch apps, pending actions are sent right away.
 - **Copy a release link.** Long-press an entry on a phone, or use the menu of a release (`c`).
+- **Download release files.** Releases with attached files get a download button; the file for
+  your device is suggested first. On phones the files open in a drawer from the bottom.
 - **AI summaries.** Summarize a release, or everything that's new in a repository, with Claude.
   Summaries are cached and created only when you ask.
 - **Release notes and README** rendered as GitHub-flavoured markdown, with working anchors,
@@ -91,6 +93,7 @@ That process also runs the poller, so run exactly one instance.
 | `ghr.services.notifications`   | Web Push, ntfy and Telegram, and what gets announced          |
 | `ghr.services.snooze`          | Ends snoozes and sends reminders                              |
 | `ghr.services.stars`           | Star counts of repositories, refreshed daily                  |
+| `ghr.services.assets`          | Files attached to releases                                    |
 | `ghr.services.preferences`     | User preferences (pre-release mode)                           |
 | `ghr.services.summaries`       | Claude summaries and their cache                              |
 | `ghr.services.readme`          | README cache with conditional requests                        |

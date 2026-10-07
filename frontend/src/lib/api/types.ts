@@ -44,6 +44,17 @@ export interface ReleaseListItem extends Release {
   older_count: number
 }
 
+/** A file attached to a release. */
+export interface ReleaseAsset {
+  id: number
+  name: string
+  size: number
+  download_count: number
+  /** Download link on github.com. */
+  url: string
+  content_type: string | null
+}
+
 export interface ReleaseDetail extends Release {
   body: string | null
 }

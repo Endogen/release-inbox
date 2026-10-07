@@ -9,6 +9,7 @@ import {
 import { api } from "@/lib/api/client"
 import type {
   Readme,
+  ReleaseAsset,
   ReleaseDetail,
   ReleasePage,
   ReleaseRef,
@@ -56,6 +57,15 @@ export function useRelease(id: number | null) {
     queryFn: ({ signal }) => api.get<ReleaseDetail>(`/releases/${id}`, { signal }),
     enabled: id !== null,
     placeholderData: id === null ? undefined : keepPreviousData,
+  })
+}
+
+/** Files attached to a release. */
+export function useReleaseAssets(releaseId: number) {
+  return useQuery({
+    queryKey: releaseKeys.assets(releaseId),
+    queryFn: ({ signal }) => api.get<ReleaseAsset[]>(`/releases/${releaseId}/assets`, { signal }),
+    staleTime: 10 * 60_000,
   })
 }
 

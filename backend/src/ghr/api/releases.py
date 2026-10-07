@@ -2,9 +2,16 @@ from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Query, status
 
-from ghr.api.deps import InboxServiceDep, ReleaseQueriesDep, SearchQuery
+from ghr.api.deps import AssetServiceDep, InboxServiceDep, ReleaseQueriesDep, SearchQuery
 from ghr.domain import View
-from ghr.schemas import MarkReadRequest, ReleaseDetail, ReleasePage, SnoozeRequest, ViewCounts
+from ghr.schemas import (
+    MarkReadRequest,
+    ReleaseAssetOut,
+    ReleaseDetail,
+    ReleasePage,
+    SnoozeRequest,
+    ViewCounts,
+)
 
 router = APIRouter(prefix="/releases", tags=["releases"])
 
@@ -29,6 +36,12 @@ async def count_releases(queries: ReleaseQueriesDep, q: SearchQuery = None) -> V
 @router.get("/{release_id}")
 async def get_release(release_id: int, queries: ReleaseQueriesDep) -> ReleaseDetail:
     return await queries.get(release_id)
+
+
+@router.get("/{release_id}/assets")
+async def list_release_assets(release_id: int, assets: AssetServiceDep) -> list[ReleaseAssetOut]:
+    """Files attached to the release."""
+    return await assets.list(release_id)
 
 
 @router.post("/{release_id}/read", status_code=status.HTTP_204_NO_CONTENT)

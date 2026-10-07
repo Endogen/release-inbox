@@ -201,6 +201,7 @@ export function InboxPage({ username }: { username: string }) {
       onSelectRelease={(id) => route.selectRelease(id)}
       onBack={isDesktop ? undefined : route.closeRelease}
       focusOnOpen={!isDesktop}
+      showStars={!isDesktop}
       snoozeMenuOpen={snoozeMenuFor === selected.id}
       onSnoozeMenuOpenChange={(open) => setSnoozeMenuFor(open ? selected.id : null)}
       pending={{

@@ -1,4 +1,4 @@
-import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon, StarIcon } from "lucide-react"
+import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon } from "lucide-react"
 import { memo, type Ref } from "react"
 
 import { RelativeTime } from "@/components/relative-time"
@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useRowGestures, type SwipeDirection } from "@/hooks/use-row-gestures"
 import type { ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
-import { formatCount } from "@/lib/format-count"
 import { formatAbsolute } from "@/lib/time"
 import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
+import { StarCount } from "./star-count"
 
 export interface ReleaseRowHandlers {
   onSelect: (release: ReleaseListItemData) => void
@@ -85,11 +85,7 @@ export const ReleaseListItem = memo(function ReleaseListItem({
               <BellOffIcon className="size-3 shrink-0" aria-label="Notifications off" />
             )}
             {repository.stargazers_count !== null && (
-              <span className="flex shrink-0 items-center gap-0.5 tabular-nums">
-                <StarIcon className="size-3" aria-hidden />
-                {formatCount(repository.stargazers_count)}
-                <span className="sr-only"> stars</span>
-              </span>
+              <StarCount count={repository.stargazers_count} />
             )}
             <RelativeTime
               date={release.published_at}

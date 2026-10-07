@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Enum,
@@ -64,6 +65,8 @@ class Release(Base):
     breaking: Mapped[bool] = mapped_column(Boolean, default=False)
     #: ETag of the last fetch, so refreshes are conditional requests.
     etag: Mapped[str | None] = mapped_column(String(255))
+    #: Attached files (``ghr.services.assets``); ``None`` until they have been fetched.
+    assets: Mapped[list[dict[str, object]] | None] = mapped_column(JSON)
 
     repository: Mapped[Repository] = relationship()
 
