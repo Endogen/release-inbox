@@ -64,6 +64,17 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     })
   }
 
+  /** Marks the entry as read without a toast, e.g. after the user viewed it and moved on. */
+  function markViewed(release: Release) {
+    markReadMutation.mutate({
+      releaseId: release.id,
+      repositoryId: release.repository.id,
+      leaves: leavingView(release, "read"),
+      includeOlderIn: viewOf(release, Date.now()),
+      search,
+    })
+  }
+
   function unsubscribe(release: Release) {
     const { repository } = release
     queue.schedule({
@@ -148,6 +159,7 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
 
   return {
     markRead,
+    markViewed,
     markUnread,
     snooze,
     unsnooze,

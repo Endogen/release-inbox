@@ -13,9 +13,10 @@ from pydantic import (
     Field,
     HttpUrl,
     field_validator,
+    model_validator,
 )
 
-from ghr.domain import PrereleaseMode, View
+from ghr.domain import NotifyAbout, PrereleaseMode, View
 
 
 class Schema(BaseModel):
@@ -69,8 +70,17 @@ class ReleaseAssetOut(Schema):
     content_type: str | None
 
 
+class HideRuleRef(Schema):
+    id: int
+    pattern: str
+    #: Releases of the repository the rule hides.
+    match_count: int
+
+
 class ReleaseDetail(ReleaseOut):
     body: str | None
+    #: The rules that hide the release; empty unless it is hidden by a rule.
+    hide_rules: list[HideRuleRef]
 
 
 class ReleasePage(Schema):
@@ -176,6 +186,29 @@ class CurrentUser(Schema):
 
 class PreferenceSettings(Schema):
     prereleases: PrereleaseMode
+    notify_about: NotifyAbout
+    mark_read_after_viewing: bool
+    app_badge: bool
+
+
+class PreferenceChanges(BaseModel):
+    """Changes to the preferences: only the settings that are sent change."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    prereleases: PrereleaseMode | None = None
+    notify_about: NotifyAbout | None = None
+    mark_read_after_viewing: bool | None = None
+    app_badge: bool | None = None
+
+    @model_validator(mode="after")
+    def _changes_something(self) -> "PreferenceChanges":
+        changes = self.model_dump(exclude_unset=True)
+        if not changes:
+            raise ValueError("Change at least one setting")
+        if None in changes.values():
+            raise ValueError("Settings can't be empty")
+        return self
 
 
 class NotificationChannelOut(Schema):

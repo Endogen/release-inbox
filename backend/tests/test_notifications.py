@@ -194,6 +194,37 @@ class TestAnnouncementFilters:
 
         assert [notification.title for notification in sent] == ["acme/tool"]
 
+    async def test_only_breaking_releases_if_wanted(
+        self,
+        container: Container,
+        github_api: respx.MockRouter,
+        user_client: AsyncClient,
+        sent: SentNotifications,
+    ) -> None:
+        major = FakeRelease(4, 20, "acme/tool", "v3.0.0", "2026-10-04T10:00:00Z")
+        mock_github(github_api, [self.STABLE, self.BETA, major])
+        await container.sync.sync()
+        await user_client.patch("/api/preferences", json={"notify_about": "breaking"})
+
+        await container.notifier.announce_new_releases([1, 2, 4])
+
+        assert [notification.body for notification in sent] == [
+            "v3.0.0 was released · may contain breaking changes"
+        ]
+
+    async def test_no_count_for_the_app_icon_if_turned_off(
+        self,
+        container: Container,
+        github_api: respx.MockRouter,
+        user_client: AsyncClient,
+        sent: SentNotifications,
+    ) -> None:
+        await user_client.patch("/api/preferences", json={"app_badge": False})
+
+        await self.announce(container, github_api, user_client)
+
+        assert sent[0].unread is None
+
 
 async def test_channels_and_test_notification_endpoints(
     user_client: AsyncClient, sent: SentNotifications

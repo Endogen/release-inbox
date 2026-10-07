@@ -1,6 +1,5 @@
 """Per-repository preferences that only affect this application."""
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.db import get_existing, utcnow
@@ -26,11 +25,3 @@ class RepositoryService:
 
         self._broker.publish(RELEASES_CHANGED)
         return RepositoryOut.model_validate(repository)
-
-    async def list_muted(self) -> list[RepositoryOut]:
-        repositories = await self._session.scalars(
-            select(Repository)
-            .where(Repository.notifications_muted_at.is_not(None))
-            .order_by(Repository.full_name)
-        )
-        return [RepositoryOut.model_validate(repository) for repository in repositories]

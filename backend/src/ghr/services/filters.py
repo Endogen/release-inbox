@@ -3,7 +3,17 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, SQLColumnExpression, and_, exists, false, func, or_, true
+from sqlalchemy import (
+    ColumnElement,
+    SQLColumnExpression,
+    and_,
+    exists,
+    false,
+    func,
+    or_,
+    select,
+    true,
+)
 
 from ghr.domain import PrereleaseMode, View
 from ghr.models import HideRule, Release, Repository
@@ -31,6 +41,19 @@ def matches_pattern(pattern: SQLColumnExpression[str] | str) -> ColumnElement[bo
     return or_(
         _glob_matches(func.coalesce(Release.name, ""), pattern),
         _glob_matches(Release.tag_name, pattern),
+    )
+
+
+def hide_rule_match_count(
+    repository_id: SQLColumnExpression[int] | int, pattern: SQLColumnExpression[str] | str
+) -> ColumnElement[int]:
+    """Number of releases of the repository that the pattern matches."""
+    return (
+        select(func.count(Release.id))
+        .where(Release.repository_id == repository_id, matches_pattern(pattern))
+        # Counts on its own, also inside queries of releases.
+        .correlate_except(Release)
+        .scalar_subquery()
     )
 
 

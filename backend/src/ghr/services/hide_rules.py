@@ -1,46 +1,25 @@
 """Hide rules: per-repository glob patterns matched against release names and tags."""
 
-from sqlalchemy import ColumnElement, SQLColumnExpression, func, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import contains_eager
 
 from ghr.db import get_existing
 from ghr.errors import ConflictError
 from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.models import HideRule, Release, Repository
 from ghr.schemas import HideRuleOut, HideRulePreview, RepositoryOut
-from ghr.services.filters import is_hidden, matches_pattern
+from ghr.services.filters import hide_rule_match_count, is_hidden, matches_pattern
 from ghr.services.preferences import load_view_context
 from ghr.services.releases import release_ref
 
 PREVIEW_LIMIT = 10
 
 
-def _match_count(
-    repository_id: SQLColumnExpression[int] | int, pattern: SQLColumnExpression[str] | str
-) -> ColumnElement[int]:
-    """Number of releases of the repository that the pattern matches."""
-    return (
-        select(func.count(Release.id))
-        .where(Release.repository_id == repository_id, matches_pattern(pattern))
-        .scalar_subquery()
-    )
-
-
 class HideRuleService:
     def __init__(self, session: AsyncSession, broker: EventBroker) -> None:
         self._session = session
         self._broker = broker
-
-    async def list_all(self) -> list[HideRuleOut]:
-        rows = await self._session.execute(
-            select(HideRule, _match_count(HideRule.repository_id, HideRule.pattern))
-            .join(HideRule.repository)
-            .options(contains_eager(HideRule.repository))
-            .order_by(Repository.full_name, HideRule.pattern)
-        )
-        return [_to_out(rule, count) for rule, count in rows]
 
     async def create(self, repository_id: int, pattern: str) -> HideRuleOut:
         repository = await self._require_repository(repository_id)
@@ -53,7 +32,7 @@ class HideRuleService:
             raise ConflictError(f"A rule for {pattern!r} already exists") from error
 
         self._broker.publish(RELEASES_CHANGED)
-        count = await self._session.scalar(select(_match_count(repository_id, pattern)))
+        count = await self._session.scalar(select(hide_rule_match_count(repository_id, pattern)))
         return _to_out(rule, count or 0)
 
     async def delete(self, rule_id: int) -> None:
@@ -66,7 +45,7 @@ class HideRuleService:
         """Releases of the repository a rule with ``pattern`` would hide."""
         await self._require_repository(repository_id)
         context = await load_view_context(self._session)
-        total = await self._session.scalar(select(_match_count(repository_id, pattern)))
+        total = await self._session.scalar(select(hide_rule_match_count(repository_id, pattern)))
         rows = await self._session.execute(
             select(Release, is_hidden(context.prereleases).label("is_hidden"))
             .where(Release.repository_id == repository_id, matches_pattern(pattern))

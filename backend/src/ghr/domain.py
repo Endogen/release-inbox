@@ -21,3 +21,11 @@ class PrereleaseMode(StrEnum):
     MUTE = "mute"
     #: Moved to the Hidden view, without notifications.
     HIDE = "hide"
+
+
+class NotifyAbout(StrEnum):
+    """Which new releases send a notification."""
+
+    ALL = "all"
+    #: Only releases with breaking changes.
+    BREAKING = "breaking"

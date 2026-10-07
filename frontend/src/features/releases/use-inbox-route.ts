@@ -10,6 +10,8 @@ export function viewPath(view: View, search: string): string {
 interface RouteState {
   /** The release was opened from the list with a new history entry (mobile layout). */
   openedFromList?: boolean
+  /** The settings were opened with a new history entry. */
+  openedSettings?: boolean
 }
 
 function parseId(value: string | null): number | null {
@@ -17,7 +19,7 @@ function parseId(value: string | null): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
-/** Inbox state kept in the URL: `/:view?q=<search>&release=<id>`. */
+/** Inbox state kept in the URL: `/:view?q=<search>&release=<id>&settings=open`. */
 export function useInboxRoute() {
   const params = useParams()
   const navigate = useNavigate()
@@ -27,7 +29,9 @@ export function useInboxRoute() {
   const view: View = isView(params.view) ? params.view : "inbox"
   const search = searchParams.get("q") ?? ""
   const releaseId = parseId(searchParams.get("release"))
-  const openedFromList = (location.state as RouteState | null)?.openedFromList === true
+  const state = location.state as RouteState | null
+  const openedFromList = state?.openedFromList === true
+  const settingsOpen = searchParams.get("settings") === "open"
 
   function updateParam(
     key: string,
@@ -57,6 +61,16 @@ export function useInboxRoute() {
     else updateParam("release", null)
   }
 
+  /** Open the settings with a history entry, so the system back gesture closes them. */
+  function openSettings() {
+    updateParam("settings", "open", { push: true, state: { openedFromList, openedSettings: true } })
+  }
+
+  function closeSettings() {
+    if (state?.openedSettings) void navigate(-1)
+    else updateParam("settings", null, { state: { openedFromList } })
+  }
+
   function setSearch(value: string) {
     updateParam("q", value || null)
   }
@@ -65,5 +79,16 @@ export function useInboxRoute() {
     void navigate(viewPath(next, search))
   }
 
-  return { view, search, releaseId, selectRelease, closeRelease, setSearch, setView }
+  return {
+    view,
+    search,
+    releaseId,
+    settingsOpen,
+    selectRelease,
+    closeRelease,
+    openSettings,
+    closeSettings,
+    setSearch,
+    setView,
+  }
 }

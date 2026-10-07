@@ -8,11 +8,6 @@ from ghr.schemas import HidePattern, HideRuleCreate, HideRuleOut, HideRulePrevie
 router = APIRouter(prefix="/hide-rules", tags=["hide rules"])
 
 
-@router.get("")
-async def list_hide_rules(rules: HideRuleServiceDep) -> list[HideRuleOut]:
-    return await rules.list_all()
-
-
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_hide_rule(payload: HideRuleCreate, rules: HideRuleServiceDep) -> HideRuleOut:
     return await rules.create(payload.repository_id, payload.pattern)

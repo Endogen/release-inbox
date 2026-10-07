@@ -10,8 +10,9 @@ from sqlalchemy.orm import contains_eager
 from ghr.db import get_existing
 from ghr.domain import View
 from ghr.errors import NotFoundError
-from ghr.models import Release, Repository
+from ghr.models import HideRule, Release, Repository
 from ghr.schemas import (
+    HideRuleRef,
     ReleaseDetail,
     ReleaseListItem,
     ReleasePage,
@@ -19,7 +20,14 @@ from ghr.schemas import (
     RepositoryOut,
     ViewCounts,
 )
-from ghr.services.filters import ViewContext, in_view, is_hidden, matches_search
+from ghr.services.filters import (
+    ViewContext,
+    hide_rule_match_count,
+    in_view,
+    is_hidden,
+    matches_pattern,
+    matches_search,
+)
 from ghr.services.preferences import load_view_context
 
 #: Upper bound for the combined "what's new" notes of one repository.
@@ -101,7 +109,11 @@ class ReleaseQueries:
         if result is None:
             raise NotFoundError("Release", release_id)
         release, hidden = result
-        return ReleaseDetail(**_release_fields(release, hidden), body=release.body)
+        return ReleaseDetail(
+            **_release_fields(release, hidden),
+            body=release.body,
+            hide_rules=await self._hide_rules_of(release) if hidden else [],
+        )
 
     async def list_for_repository(self, repository_id: int) -> list[ReleaseRef]:
         """All releases of a repository, newest first."""
@@ -134,8 +146,27 @@ class ReleaseQueries:
             .limit(MAX_UNREAD_RELEASES)
         )
         return [
-            ReleaseDetail(**_release_fields(release, hidden=False), body=release.body)
+            ReleaseDetail(
+                **_release_fields(release, hidden=False), body=release.body, hide_rules=[]
+            )
             for release in rows.scalars()
+        ]
+
+    async def _hide_rules_of(self, release: Release) -> list[HideRuleRef]:
+        """The rules of the release's repository that match it."""
+        rows = await self._session.execute(
+            select(
+                HideRule.id,
+                HideRule.pattern,
+                hide_rule_match_count(HideRule.repository_id, HideRule.pattern),
+            )
+            .join(Release, Release.repository_id == HideRule.repository_id)
+            .where(Release.id == release.id, matches_pattern(HideRule.pattern))
+            .order_by(HideRule.pattern)
+        )
+        return [
+            HideRuleRef(id=rule_id, pattern=pattern, match_count=count)
+            for rule_id, pattern, count in rows
         ]
 
     async def _require_repository(self, repository_id: int) -> None:

@@ -60,15 +60,18 @@ Undo. Releases open full screen.
 - **Star counts** next to each repository, refreshed daily.
 - **Notifications where you want them.** Browser push, [ntfy](https://ntfy.sh) and Telegram.
   Every repository you watch notifies you, including ones you start watching later; mute a
-  repository with the bell on one of its releases (or `m`).
+  repository with the bell on one of its releases (or `m`), or only hear about releases with
+  breaking changes.
 - **Live updates.** GitHub is polled every minute (at the interval GitHub asks for), and
   *Sync now* polls right away. Open tabs update instantly via server-sent events. Recent
   releases are re-checked every 30 minutes, so edited notes show up, and a pre-release that is
   promoted to a stable release notifies you again.
 - **Keyboard driven.** `j`/`k` navigate, `e` marks as read, `s` snoozes, `h` hides, `o` opens on
   GitHub, `/` searches, and `?` lists all shortcuts.
-- Light and dark theme, responsive layout, installable as an app that shows the number of
-  inbox entries on its icon.
+- **Your way.** Mark releases as read once you move on from them, and choose per device: light
+  or dark theme, a compact list, star counts, relative or calendar dates, and the tab releases
+  open on.
+- Responsive layout, installable as an app that shows the number of inbox entries on its icon.
 
 ## Architecture
 
@@ -127,7 +130,8 @@ That process also runs the poller, so run exactly one instance.
   exactly the same thing. If you start watching it again on GitHub, its next release brings it
   back.
 - **Hide rules.** Glob patterns (`*`, `?`, `[...]`) are matched case-insensitively against the
-  release name and tag of one repository. New releases that match are hidden as well.
+  release name and tag of one repository. New releases that match are hidden as well. A hidden
+  release names the rule that hides it, with *Show again* to remove the rule.
 - **Browser push** needs HTTPS. On iOS, add the site to the home screen first (Safari → Share →
   Add to Home Screen), then turn it on in the app's settings. ntfy and Telegram work anywhere.
 - **The count on the app icon** needs the app installed (Chrome or Edge: Install app; Safari:

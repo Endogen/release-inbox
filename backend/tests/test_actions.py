@@ -246,9 +246,7 @@ async def test_muting_a_repository(user_client: AsyncClient) -> None:
     muted = await user_client.put("/api/repositories/10/notifications", json={"enabled": False})
 
     assert muted.json()["notifications_muted_at"] is not None
-    listed = (await user_client.get("/api/repositories/muted")).json()
-    assert [repository["id"] for repository in listed] == [10]
 
-    await user_client.put("/api/repositories/10/notifications", json={"enabled": True})
+    unmuted = await user_client.put("/api/repositories/10/notifications", json={"enabled": True})
 
-    assert (await user_client.get("/api/repositories/muted")).json() == []
+    assert unmuted.json()["notifications_muted_at"] is None

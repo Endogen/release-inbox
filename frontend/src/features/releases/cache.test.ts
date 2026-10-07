@@ -37,7 +37,7 @@ describe("removeFromList", () => {
 describe("setMutedEverywhere", () => {
   it("updates the repository in lists and details", () => {
     const client = new QueryClient()
-    const detail: ReleaseDetail = { ...makeRelease({ id: 1 }), body: null }
+    const detail: ReleaseDetail = { ...makeRelease({ id: 1 }), body: null, hide_rules: [] }
     client.setQueryData(releaseKeys.list("inbox", ""), pages([APP, TOOL]))
     client.setQueryData(releaseKeys.detail(1), detail)
 

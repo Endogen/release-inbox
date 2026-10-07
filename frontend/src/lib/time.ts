@@ -24,6 +24,8 @@ const absoluteFormat = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
   timeStyle: "short",
 })
+const dayFormat = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" })
+const dayOfYearFormat = new Intl.DateTimeFormat(undefined, { dateStyle: "medium" })
 const weekdayTimeFormat = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
   hour: "numeric",
@@ -51,6 +53,14 @@ export function formatRelative(date: string | Date, now: number): string {
 
 export function formatAbsolute(date: string | Date): string {
   return absoluteFormat.format(new Date(date))
+}
+
+/** The day such as "Oct 7", with the year if it isn't the current one. */
+export function formatDate(date: string | Date, now: number): string {
+  const day = new Date(date)
+  return day.getFullYear() === new Date(now).getFullYear()
+    ? dayFormat.format(day)
+    : dayOfYearFormat.format(day)
 }
 
 /** Weekday and time such as "Tue 9:00 AM", for times within the coming week. */

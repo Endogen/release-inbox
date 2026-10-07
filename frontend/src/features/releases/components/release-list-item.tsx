@@ -4,11 +4,12 @@ import { memo, type Ref } from "react"
 
 import { RepoAvatar } from "@/components/avatars"
 import { Hint } from "@/components/hint"
-import { RelativeTime } from "@/components/relative-time"
+import { Timestamp } from "@/components/timestamp"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useRowGestures, type SwipeDirection } from "@/hooks/use-row-gestures"
 import type { ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
+import { useDisplaySettings } from "@/lib/display-settings"
 import { formatAbsolute } from "@/lib/time"
 
 import { releaseTitle } from "../release-title"
@@ -42,6 +43,7 @@ export const ReleaseListItem = memo(function ReleaseListItem({
   onCopyLink,
 }: ReleaseListItemProps) {
   const { repository } = release
+  const { stars, compactList } = useDisplaySettings()
   const title = releaseTitle(release)
   const showTag = title !== release.tag_name
   const canUnsubscribe = onUnsubscribe && !repository.unsubscribed_at
@@ -61,7 +63,8 @@ export const ReleaseListItem = memo(function ReleaseListItem({
         style={{ transform: gestures.offset ? `translateX(${gestures.offset}px)` : undefined }}
         className={cn(
           // No text selection or callout menu: a long press on the row copies its link.
-          "group/row relative flex touch-pan-y gap-3 bg-background px-4 py-3 select-none [-webkit-touch-callout:none]",
+          "group/row relative flex touch-pan-y bg-background px-4 select-none [-webkit-touch-callout:none]",
+          compactList ? "gap-2.5 py-2" : "gap-3 py-3",
           "before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-primary before:opacity-0 before:transition-opacity",
           "hover:bg-muted/50 data-held:bg-muted data-selected:bg-muted data-selected:before:opacity-100",
           gestures.phase !== "dragging" &&
@@ -76,18 +79,26 @@ export const ReleaseListItem = memo(function ReleaseListItem({
           aria-label={`${repository.full_name} ${title}`}
           className="absolute inset-0 rounded-none outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
         />
-        <RepoAvatar repository={repository} className="pointer-events-none mt-0.5 size-9" />
-        <div className="pointer-events-none flex min-w-0 flex-1 flex-col gap-0.5">
+        <RepoAvatar
+          repository={repository}
+          className={cn("pointer-events-none mt-0.5", compactList ? "size-7" : "size-9")}
+        />
+        <div
+          className={cn(
+            "pointer-events-none flex min-w-0 flex-1 flex-col",
+            !compactList && "gap-0.5"
+          )}
+        >
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="truncate">{repository.full_name}</span>
             {repository.private && <LockIcon className="size-3 shrink-0" aria-label="Private" />}
             {repository.notifications_muted_at && (
               <BellOffIcon className="size-3 shrink-0" aria-label="Notifications off" />
             )}
-            {repository.stargazers_count !== null && (
+            {stars && repository.stargazers_count !== null && (
               <StarCount count={repository.stargazers_count} />
             )}
-            <RelativeTime
+            <Timestamp
               date={release.published_at}
               format="short"
               className={cn(
@@ -97,24 +108,18 @@ export const ReleaseListItem = memo(function ReleaseListItem({
             />
           </div>
           <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">{title}</span>
+            <span className="min-w-16 truncate text-sm font-medium">{title}</span>
             {release.breaking && <BreakingBadge />}
             {release.prerelease && <PrereleaseBadge />}
+            {/* Compact rows have two lines: the entry's state moves up, the tag is left out. */}
+            {compactList && <EntryState release={release} />}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {showTag && <span className="truncate font-mono">{release.tag_name}</span>}
-            {release.older_count > 0 && (
-              <Badge variant="secondary" className="shrink-0">
-                +{release.older_count} older
-              </Badge>
-            )}
-            {release.snoozed_until && (
-              <Badge variant="outline" className="shrink-0">
-                <AlarmClockIcon data-icon="inline-start" />
-                Until {formatAbsolute(release.snoozed_until)}
-              </Badge>
-            )}
-          </div>
+          {!compactList && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {showTag && <span className="truncate font-mono">{release.tag_name}</span>}
+              <EntryState release={release} />
+            </div>
+          )}
         </div>
         {onMarkRead && (
           // Only for mice and trackpads: on touch screens there is no hover, and an invisible
@@ -135,6 +140,25 @@ export const ReleaseListItem = memo(function ReleaseListItem({
     </li>
   )
 })
+
+/** What else the entry stands for, and until when it is snoozed. */
+function EntryState({ release }: { release: ReleaseListItemData }) {
+  return (
+    <>
+      {release.older_count > 0 && (
+        <Badge variant="secondary" className="shrink-0">
+          +{release.older_count} older
+        </Badge>
+      )}
+      {release.snoozed_until && (
+        <Badge variant="outline" className="shrink-0">
+          <AlarmClockIcon data-icon="inline-start" />
+          Until {formatAbsolute(release.snoozed_until)}
+        </Badge>
+      )}
+    </>
+  )
+}
 
 const SWIPE_ACTIONS = {
   left: {

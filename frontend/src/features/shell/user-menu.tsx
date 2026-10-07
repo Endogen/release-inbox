@@ -1,11 +1,4 @@
-import {
-  KeyboardIcon,
-  LogOutIcon,
-  MonitorIcon,
-  MoonIcon,
-  SettingsIcon,
-  SunIcon,
-} from "lucide-react"
+import { KeyboardIcon, LogOutIcon, SettingsIcon } from "lucide-react"
 
 import { UserAvatar } from "@/components/avatars"
 import { MenuKeyHint } from "@/components/key-hint"
@@ -16,14 +9,10 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLogout } from "@/features/auth/api"
-import { isTheme } from "@/features/theme/context"
-import { useTheme } from "@/features/theme/use-theme"
 import { HOTKEYS } from "@/lib/hotkeys"
 
 interface UserMenuProps {
@@ -33,7 +22,6 @@ interface UserMenuProps {
 }
 
 export function UserMenu({ username, onOpenSettings, onOpenShortcuts }: UserMenuProps) {
-  const { theme, setTheme } = useTheme()
   const logout = useLogout()
 
   return (
@@ -55,29 +43,6 @@ export function UserMenu({ username, onOpenSettings, onOpenShortcuts }: UserMenu
             Keyboard shortcuts
             <MenuKeyHint hotkey={HOTKEYS.help} />
           </DropdownMenuItem>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>Theme</DropdownMenuLabel>
-          <DropdownMenuRadioGroup
-            value={theme}
-            onValueChange={(value) => {
-              if (isTheme(value)) setTheme(value)
-            }}
-          >
-            <DropdownMenuRadioItem value="light">
-              <SunIcon />
-              Light
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="dark">
-              <MoonIcon />
-              Dark
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="system">
-              <MonitorIcon />
-              System
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>

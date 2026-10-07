@@ -64,7 +64,7 @@ class TestGrouping:
 @pytest.mark.usefixtures("synced")
 class TestPrereleaseModes:
     async def test_show_and_mute_keep_them_in_the_inbox(self, user_client: AsyncClient) -> None:
-        assert (await user_client.get("/api/preferences")).json() == {"prereleases": "show"}
+        assert (await user_client.get("/api/preferences")).json()["prereleases"] == "show"
         assert BETA.id in await list_ids(user_client, "inbox")
 
         await user_client.patch("/api/preferences", json={"prereleases": "mute"})
@@ -74,15 +74,34 @@ class TestPrereleaseModes:
     async def test_hide_moves_them_to_hidden(self, user_client: AsyncClient) -> None:
         response = await user_client.patch("/api/preferences", json={"prereleases": "hide"})
 
-        assert response.json() == {"prereleases": "hide"}
+        assert response.json()["prereleases"] == "hide"
         assert BETA.id not in await list_ids(user_client, "inbox")
         assert await list_ids(user_client, "hidden") == [BETA.id]
         detail = (await user_client.get(f"/api/releases/{BETA.id}")).json()
         assert detail["is_hidden"] is True
 
     async def test_rejects_invalid_modes(self, user_client: AsyncClient) -> None:
-        for body in ({"prereleases": None}, {"prereleases": "sometimes"}, {}):
+        for body in ({"prereleases": None}, {"prereleases": "sometimes"}, {}, {"theme": "dark"}):
             assert (await user_client.patch("/api/preferences", json=body)).status_code == 422
+
+
+async def test_preferences_change_one_at_a_time(user_client: AsyncClient) -> None:
+    assert (await user_client.get("/api/preferences")).json() == {
+        "prereleases": "show",
+        "notify_about": "all",
+        "mark_read_after_viewing": False,
+        "app_badge": True,
+    }
+
+    await user_client.patch("/api/preferences", json={"notify_about": "breaking"})
+    response = await user_client.patch("/api/preferences", json={"app_badge": False})
+
+    assert response.json() == {
+        "prereleases": "show",
+        "notify_about": "breaking",
+        "mark_read_after_viewing": False,
+        "app_badge": False,
+    }
 
 
 @pytest.mark.usefixtures("synced")

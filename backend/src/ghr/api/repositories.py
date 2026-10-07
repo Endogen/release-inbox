@@ -18,12 +18,6 @@ from ghr.schemas import (
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 
 
-@router.get("/muted")
-async def list_muted_repositories(repositories: RepositoryServiceDep) -> list[RepositoryOut]:
-    """Repositories whose new releases don't trigger notifications."""
-    return await repositories.list_muted()
-
-
 @router.put("/{repository_id}/notifications")
 async def set_repository_notifications(
     repository_id: int,

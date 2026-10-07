@@ -5,6 +5,7 @@ import { useDefaultLayout } from "react-resizable-panels"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { AppHeader } from "@/features/shell/app-header"
+import { usePreferences } from "@/features/preferences/api"
 import { SyncBanner } from "@/features/sync/sync-banner"
 import { useAppBadge } from "@/hooks/use-app-badge"
 import { useHasOpened } from "@/hooks/use-has-opened"
@@ -12,9 +13,9 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { useStableCallback } from "@/hooks/use-stable-callback"
 import type { Release, ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { MEDIA } from "@/lib/breakpoints"
+import { CONTENT_TABS, useDisplaySettings, type ContentTab } from "@/lib/display-settings"
 
 import { useRelease, useViewCounts } from "./api"
-import { CONTENT_TABS, type ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
 import { SearchBox } from "./components/search-box"
@@ -23,6 +24,7 @@ import { DetailSkeleton, MissingRelease, NoSelection, PaneError } from "./inbox-
 import { useInboxEntries } from "./use-inbox-entries"
 import { useInboxHotkeys } from "./use-inbox-hotkeys"
 import { useInboxRoute } from "./use-inbox-route"
+import { useMarkReadAfterViewing } from "./use-mark-read-after-viewing"
 import { useReleaseActions } from "./use-release-actions"
 
 const PANEL_IDS = ["list", "detail"]
@@ -50,21 +52,24 @@ export function InboxPage({ username }: { username: string }) {
   const isDesktop = useMediaQuery(MEDIA.lg)
   const layout = useDefaultLayout({ id: "inbox-layout", panelIds: PANEL_IDS })
 
-  const [contentTab, setContentTab] = useState<ContentTab>("notes")
+  const display = useDisplaySettings()
+  const preferences = usePreferences().data
+  /** The tab chosen for a repository; another repository opens on the preferred one. */
+  const [chosenTab, setChosenTab] = useState<{ repositoryId: number; tab: ContentTab } | null>(null)
   const [hideTarget, setHideTarget] = useState<Release | null>(null)
   /** The release whose snooze menu is open; it closes when the selection changes. */
   const [snoozeMenuFor, setSnoozeMenuFor] = useState<number | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
   const hideDialogUsed = useHasOpened(hideTarget !== null)
-  const settingsUsed = useHasOpened(settingsOpen)
+  const settingsUsed = useHasOpened(route.settingsOpen)
   const shortcutsUsed = useHasOpened(shortcutsOpen)
 
   const { list, loaded, items, viewCounts } = useInboxEntries(view, route.search)
   const detail = useRelease(route.releaseId)
   // The installed app's icon shows the inbox entries, whatever the search.
-  useAppBadge(useViewCounts("").data?.inbox)
+  const inboxCount = useViewCounts("").data?.inbox
+  useAppBadge(preferences === undefined ? undefined : preferences.app_badge ? inboxCount : 0)
 
   // While another version loads, the previous one stays visible (placeholder data).
   const current = detail.data?.id === route.releaseId ? detail.data : undefined
@@ -79,7 +84,13 @@ export function InboxPage({ username }: { username: string }) {
   const whatsNewCount =
     view === "inbox" && entry && entry.older_count > 0 ? entry.older_count + 1 : 0
   const contentTabs = CONTENT_TABS.filter((tab) => tab !== "changes" || whatsNewCount > 0)
-  const shownTab = contentTabs.includes(contentTab) ? contentTab : "notes"
+  const wantedTab =
+    chosenTab && chosenTab.repositoryId === selected?.repository.id ? chosenTab.tab : display.openOn
+  const shownTab = contentTabs.includes(wantedTab) ? wantedTab : "notes"
+
+  function changeContentTab(tab: ContentTab) {
+    if (selected) setChosenTab({ repositoryId: selected.repository.id, tab })
+  }
 
   const actions = useReleaseActions({
     view,
@@ -87,6 +98,8 @@ export function InboxPage({ username }: { username: string }) {
     entryOf: (repositoryId) => loaded.get(repositoryId),
     onLeave: (release) => {
       if (selected?.repository.id !== release.repository.id) return
+      // The action took care of the release; leaving it isn't moving on from it.
+      skipMarkRead()
       if (!isDesktop) {
         route.closeRelease()
         return
@@ -94,6 +107,11 @@ export function InboxPage({ username }: { username: string }) {
       const next = items[selectedIndex + 1] ?? items[selectedIndex - 1]
       route.selectRelease(next?.id ?? null)
     },
+  })
+
+  const skipMarkRead = useMarkReadAfterViewing(selected, {
+    enabled: preferences?.mark_read_after_viewing ?? false,
+    markRead: actions.markViewed,
   })
 
   const openRelease = useStableCallback((release: ReleaseListItemData) =>
@@ -115,7 +133,7 @@ export function InboxPage({ username }: { username: string }) {
 
   function cycleContentTab() {
     const index = contentTabs.indexOf(shownTab)
-    setContentTab(contentTabs[(index + 1) % contentTabs.length] ?? "notes")
+    changeContentTab(contentTabs[(index + 1) % contentTabs.length] ?? "notes")
   }
 
   useInboxHotkeys({
@@ -163,11 +181,13 @@ export function InboxPage({ username }: { username: string }) {
       whatsNewCount={whatsNewCount}
       search={route.search}
       contentTab={shownTab}
-      onContentTabChange={setContentTab}
+      onContentTabChange={changeContentTab}
       onSelectRelease={(id) => route.selectRelease(id)}
       onBack={isDesktop ? undefined : route.closeRelease}
       focusOnOpen={!isDesktop}
-      showStars={!isDesktop}
+      showStars={!isDesktop && display.stars}
+      hideRules={current?.hide_rules}
+      onOpenSettings={route.openSettings}
       snoozeMenuOpen={snoozeMenuFor === selected.id}
       onSnoozeMenuOpenChange={(open) => setSnoozeMenuFor(open ? selected.id : null)}
       pending={{
@@ -208,7 +228,7 @@ export function InboxPage({ username }: { username: string }) {
     <div className="flex h-dvh flex-col">
       <AppHeader
         username={username}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={route.openSettings}
         onOpenShortcuts={() => setShortcutsOpen(true)}
         search={<SearchBox ref={searchRef} value={route.search} onCommit={route.setSearch} />}
       />
@@ -243,7 +263,12 @@ export function InboxPage({ username }: { username: string }) {
             onOpenChange={(open) => !open && setHideTarget(null)}
           />
         )}
-        {settingsUsed && <SettingsSheet open={settingsOpen} onOpenChange={setSettingsOpen} />}
+        {settingsUsed && (
+          <SettingsSheet
+            open={route.settingsOpen}
+            onOpenChange={(open) => !open && route.closeSettings()}
+          />
+        )}
         {shortcutsUsed && <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />}
       </Suspense>
     </div>

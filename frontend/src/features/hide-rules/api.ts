@@ -6,16 +6,8 @@ import type { HideRule, HideRulePreview } from "@/lib/api/types"
 
 const hideRuleKeys = {
   all: ["hide-rules"] as const,
-  list: () => [...hideRuleKeys.all, "list"] as const,
   preview: (repositoryId: number, pattern: string) =>
     [...hideRuleKeys.all, "preview", repositoryId, pattern] as const,
-}
-
-export function useHideRules() {
-  return useQuery({
-    queryKey: hideRuleKeys.list(),
-    queryFn: ({ signal }) => api.get<HideRule[]>("/hide-rules", { signal }),
-  })
 }
 
 export function useHideRulePreview(repositoryId: number, pattern: string) {

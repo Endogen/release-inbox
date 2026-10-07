@@ -137,12 +137,20 @@ export function useMarkUnread() {
 }
 
 /**
- * Marks only this release as read, right away. Marking an entry as read goes through the undo
- * queue instead; this undoes "mark as unread".
+ * Marks the release as read right away, and its older releases in ``includeOlderIn`` that match
+ * ``search``. Marking an entry as read from the UI goes through the undo queue instead.
  */
 export function useMarkRead() {
   return useReleaseMutation(
-    ({ releaseId }) => api.post(`/releases/${releaseId}/read`, { include_older_in: null }),
+    ({
+      releaseId,
+      includeOlderIn = null,
+      search = "",
+    }: ReleaseActionInput & { includeOlderIn?: View | null; search?: string }) =>
+      api.post(`/releases/${releaseId}/read`, {
+        include_older_in: includeOlderIn,
+        search: search || null,
+      }),
     "Couldn't mark as read"
   )
 }

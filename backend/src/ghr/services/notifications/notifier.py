@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import contains_eager
 
-from ghr.domain import PrereleaseMode, View
+from ghr.domain import NotifyAbout, PrereleaseMode, View
 from ghr.models import Release, Repository
 from ghr.services.filters import is_hidden
 from ghr.services.notifications.message import (
@@ -65,8 +65,9 @@ class Notifier:
         )
 
     async def announce_new_releases(self, release_ids: Sequence[int]) -> None:
-        """Announce new releases, except hidden ones, those of muted repositories and
-        pre-releases unless the user shows them normally."""
+        """Announce new releases, except hidden ones, those of muted repositories,
+        pre-releases unless the user shows them normally, and releases without breaking
+        changes if the user only wants to hear about those."""
         async with self._session_factory() as session:
             preferences = await load_preferences(session)
             mode = preferences.prereleases
@@ -83,6 +84,8 @@ class Notifier:
             )
             if mode is not PrereleaseMode.SHOW:
                 statement = statement.where(Release.prerelease.is_(False))
+            if preferences.notify_about is NotifyAbout.BREAKING:
+                statement = statement.where(Release.breaking.is_(True))
             releases = list(await session.scalars(statement))
         if releases:
             await self._announce(_new_releases_notification(releases))
@@ -93,9 +96,13 @@ class Notifier:
             await self._announce(_snooze_ended_notification(releases))
 
     async def _announce(self, notification: Notification) -> None:
-        """Send with the number of inbox entries, which installed apps show on their icon."""
+        """Send with the number of inbox entries, which installed apps show on their icon
+        unless the user turned that off."""
         async with self._session_factory() as session:
-            unread = await ReleaseQueries(session).count(View.INBOX)
+            preferences = await load_preferences(session)
+            unread = (
+                await ReleaseQueries(session).count(View.INBOX) if preferences.app_badge else None
+            )
         await self.send(replace(notification, unread=unread))
 
 

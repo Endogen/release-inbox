@@ -18,7 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ghr.db import Base, UtcDateTime, utcnow
-from ghr.domain import PrereleaseMode
+from ghr.domain import NotifyAbout, PrereleaseMode
 
 
 class StoredAsset(TypedDict):
@@ -135,6 +135,14 @@ class Preferences(Base):
         Enum(PrereleaseMode, native_enum=False, length=8, validate_strings=True),
         default=PrereleaseMode.SHOW,
     )
+    notify_about: Mapped[NotifyAbout] = mapped_column(
+        Enum(NotifyAbout, native_enum=False, length=8, validate_strings=True),
+        default=NotifyAbout.ALL,
+    )
+    #: Mark a release as read when the user moves on from it.
+    mark_read_after_viewing: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Installed apps show the number of inbox entries on their icon.
+    app_badge: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Summary(Base):

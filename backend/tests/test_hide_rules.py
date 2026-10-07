@@ -19,7 +19,7 @@ async def synced(container: Container, github_api: respx.MockRouter) -> None:
 
 
 @pytest.mark.usefixtures("synced")
-async def test_preview_create_list_and_delete(user_client: AsyncClient) -> None:
+async def test_preview_create_and_delete(user_client: AsyncClient) -> None:
     preview = await user_client.get(
         "/api/hide-rules/preview", params={"repository_id": 10, "pattern": "WEB@*"}
     )
@@ -33,8 +33,12 @@ async def test_preview_create_list_and_delete(user_client: AsyncClient) -> None:
     assert await list_ids(user_client, "inbox") == [API.id]
     assert await list_ids(user_client, "hidden") == [WEB_NEW.id]
 
-    listed = (await user_client.get("/api/hide-rules")).json()
-    assert [(rule["pattern"], rule["match_count"]) for rule in listed] == [("web@*", 2)]
+    detail = (await user_client.get(f"/api/releases/{WEB_NEW.id}")).json()
+    assert detail["hide_rules"] == [
+        {"id": created.json()["id"], "pattern": "web@*", "match_count": 2}
+    ]
+    shown = (await user_client.get(f"/api/releases/{API.id}")).json()
+    assert shown["hide_rules"] == []
 
     await user_client.delete(f"/api/hide-rules/{created.json()['id']}")
     assert await list_ids(user_client, "inbox") == [WEB_NEW.id]

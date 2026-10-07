@@ -55,8 +55,17 @@ export interface ReleaseAsset {
   content_type: string | null
 }
 
+/** A hide rule that matches a release. */
+export interface HideRuleRef {
+  id: number
+  pattern: string
+  match_count: number
+}
+
 export interface ReleaseDetail extends Release {
   body: string | null
+  /** The rules that hide the release; empty unless it is hidden by a rule. */
+  hide_rules: HideRuleRef[]
 }
 
 export interface ReleasePage {
@@ -110,8 +119,17 @@ export interface CurrentUser {
 /** How pre-releases are treated: normally, in the inbox without notifications, or hidden. */
 export type PrereleaseMode = "show" | "mute" | "hide"
 
+/** Which new releases send a notification. */
+export type NotifyAbout = "all" | "breaking"
+
+/** Synced across devices. */
 export interface Preferences {
   prereleases: PrereleaseMode
+  notify_about: NotifyAbout
+  /** Mark a release as read when the user moves on from it. */
+  mark_read_after_viewing: boolean
+  /** Installed apps show the number of inbox entries on their icon. */
+  app_badge: boolean
 }
 
 export interface NotificationChannel {

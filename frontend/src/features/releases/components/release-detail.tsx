@@ -1,20 +1,15 @@
-import {
-  AlarmClockIcon,
-  ArrowLeftIcon,
-  BellIcon,
-  BellOffIcon,
-  EyeOffIcon,
-  LockIcon,
-} from "lucide-react"
+import { AlarmClockIcon, ArrowLeftIcon, BellIcon, BellOffIcon, LockIcon } from "lucide-react"
 import { useEffect, useRef } from "react"
 
 import { RepoAvatar, UserAvatar } from "@/components/avatars"
 import { Hint } from "@/components/hint"
-import { RelativeTime } from "@/components/relative-time"
+import { Timestamp } from "@/components/timestamp"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { HiddenNotice } from "@/features/hide-rules/hidden-notice"
 import { useNow } from "@/hooks/use-now"
-import type { Release, Repository } from "@/lib/api/types"
+import type { HideRuleRef, Release, Repository } from "@/lib/api/types"
+import type { ContentTab } from "@/lib/display-settings"
 import { HOTKEYS } from "@/lib/hotkeys"
 import { formatAbsolute } from "@/lib/time"
 
@@ -22,7 +17,7 @@ import { releaseTitle } from "../release-title"
 import { viewOf } from "../release-view"
 import { ReleaseActionBar, type PendingActions, type ReleaseActions } from "./release-action-bar"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
-import { ReleaseContent, type ContentTab } from "./release-content"
+import { ReleaseContent } from "./release-content"
 import { ReleaseVersionSelect } from "./release-version-select"
 import { StarCount } from "./star-count"
 
@@ -45,6 +40,9 @@ interface ReleaseDetailProps {
   focusOnOpen?: boolean
   /** Show the repository's stars; the list shows them where it is next to the detail. */
   showStars?: boolean
+  /** The rules that hide the release, once its details have loaded. */
+  hideRules: readonly HideRuleRef[] | undefined
+  onOpenSettings: () => void
 }
 
 export function ReleaseDetail({
@@ -62,6 +60,8 @@ export function ReleaseDetail({
   onBack,
   focusOnOpen = false,
   showStars = false,
+  hideRules,
+  onOpenSettings,
 }: ReleaseDetailProps) {
   const headingRef = useRef<HTMLHeadingElement>(null)
   useEffect(() => {
@@ -109,12 +109,6 @@ export function ReleaseDetail({
                 Snoozed until {formatAbsolute(release.snoozed_until)}
               </Badge>
             )}
-            {release.is_hidden && (
-              <Badge variant="secondary">
-                <EyeOffIcon data-icon="inline-start" />
-                Hidden
-              </Badge>
-            )}
             {repository.unsubscribed_at && (
               <Badge variant="secondary">
                 <BellOffIcon data-icon="inline-start" />
@@ -132,10 +126,18 @@ export function ReleaseDetail({
               </span>
             )}
             <span>
-              Published <RelativeTime date={release.published_at} />
+              Published <Timestamp date={release.published_at} />
             </span>
           </div>
         </div>
+
+        {release.is_hidden && hideRules && (
+          <HiddenNotice
+            repositoryId={repository.id}
+            rules={hideRules}
+            onOpenSettings={onOpenSettings}
+          />
+        )}
 
         <ReleaseActionBar
           release={release}

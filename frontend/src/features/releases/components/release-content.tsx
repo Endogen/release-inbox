@@ -9,7 +9,7 @@ import {
 import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import { LazyMarkdown, MarkdownSkeleton } from "@/components/lazy-markdown"
-import { RelativeTime } from "@/components/relative-time"
+import { Timestamp } from "@/components/timestamp"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -19,14 +19,12 @@ import { MAX_SUMMARIZED_RELEASES } from "@/features/summaries/api"
 import { SummaryPanel } from "@/features/summaries/summary-panel"
 import { isNotFound } from "@/lib/api/client"
 import type { Release, ReleaseDetail } from "@/lib/api/types"
+import type { ContentTab } from "@/lib/display-settings"
 import { fileBaseUrls, repositoryBaseUrls } from "@/lib/markdown-urls"
 
 import { useReadme, useUnreadReleases } from "../api"
 import { releaseTitle } from "../release-title"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
-
-export const CONTENT_TABS = ["notes", "changes", "readme"] as const
-export type ContentTab = (typeof CONTENT_TABS)[number]
 
 interface ReleaseContentProps {
   release: Release
@@ -169,7 +167,7 @@ function WhatsNewHeading({ release }: { release: ReleaseDetail }) {
       </Badge>
       {release.breaking && <BreakingBadge />}
       {release.prerelease && <PrereleaseBadge />}
-      <RelativeTime date={release.published_at} className="text-sm text-muted-foreground" />
+      <Timestamp date={release.published_at} className="text-sm text-muted-foreground" />
     </div>
   )
 }

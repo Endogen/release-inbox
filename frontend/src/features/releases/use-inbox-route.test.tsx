@@ -60,6 +60,28 @@ describe("useInboxRoute", () => {
     expect(result.current.navigation).toBe("REPLACE")
   })
 
+  it("settings open with a history entry that back closes", () => {
+    const { result } = setup("/inbox?release=3")
+
+    act(() => result.current.route.openSettings())
+    expect(result.current.route.settingsOpen).toBe(true)
+    expect(result.current.navigation).toBe("PUSH")
+
+    act(() => result.current.route.closeSettings())
+    expect(result.current.route.settingsOpen).toBe(false)
+    expect(result.current.location.search).toBe("?release=3")
+    expect(result.current.navigation).toBe("POP")
+  })
+
+  it("settings in the URL from the start close without leaving the app", () => {
+    const { result } = setup("/inbox?settings=open")
+
+    act(() => result.current.route.closeSettings())
+
+    expect(result.current.location.search).toBe("")
+    expect(result.current.navigation).toBe("REPLACE")
+  })
+
   it("keeps the search when switching views", () => {
     const { result } = setup("/inbox?q=lib&release=3")
 
