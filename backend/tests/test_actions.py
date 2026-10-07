@@ -10,7 +10,7 @@ from sqlalchemy import update
 from ghr.container import Container
 from ghr.models import Release
 from tests.conftest import SentNotifications, list_ids
-from tests.github_fixtures import FakeRelease, mock_github
+from tests.github_fixtures import FakeRelease, import_releases
 
 WEB_OLD = FakeRelease(1, 10, "acme/app", "web@1.0.0", "2026-10-01T10:00:00Z")
 DOCS = FakeRelease(2, 10, "acme/app", "docs@1.0.0", "2026-10-02T10:00:00Z")
@@ -21,8 +21,7 @@ TOOL = FakeRelease(4, 20, "acme/tool", "v1.0.0", "2026-10-04T10:00:00Z")
 @pytest.fixture
 async def synced(container: Container, github_api: respx.MockRouter) -> respx.Route:
     """Imported releases; returns the route that marks GitHub threads as read."""
-    mock_github(github_api, [WEB_OLD, DOCS, WEB_NEW, TOOL])
-    assert (await container.sync.sync()).error is None
+    await import_releases(container, github_api, [WEB_OLD, DOCS, WEB_NEW, TOOL])
     return github_api.patch(url__regex=r"/notifications/threads/.+").mock(
         return_value=Response(205)
     )

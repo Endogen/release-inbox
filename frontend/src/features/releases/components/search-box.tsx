@@ -1,14 +1,15 @@
 import { SearchIcon, XIcon } from "lucide-react"
 import { useEffect, useRef, useState, type Ref } from "react"
 
+import { KeyHint } from "@/components/key-hint"
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupInput,
 } from "@/components/ui/input-group"
-import { Kbd } from "@/components/ui/kbd"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
+import { HOTKEYS } from "@/lib/hotkeys"
 
 const DEBOUNCE_MS = 250
 
@@ -71,8 +72,7 @@ export function SearchBox({ ref, value, onCommit }: SearchBoxProps) {
             <XIcon />
           </InputGroupButton>
         ) : (
-          // The shortcut needs a keyboard; touch screens have no use for the hint.
-          <Kbd className="pointer-coarse:hidden">/</Kbd>
+          <KeyHint hotkey={HOTKEYS.search} />
         )}
       </InputGroupAddon>
     </InputGroup>

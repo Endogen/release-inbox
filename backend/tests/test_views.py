@@ -14,7 +14,7 @@ from ghr.domain import PrereleaseMode, View
 from ghr.models import Release, Repository
 from ghr.services.filters import ViewContext, in_view
 from tests.conftest import list_ids
-from tests.github_fixtures import FakeRelease, mock_github
+from tests.github_fixtures import FakeRelease, import_releases
 
 WEB_OLD = FakeRelease(1, 10, "acme/app", "web@1.0.0", "2026-10-01T10:00:00Z")
 WEB_NEW = FakeRelease(2, 10, "acme/app", "web@1.1.0", "2026-10-03T10:00:00Z")
@@ -26,8 +26,7 @@ ALL = [WEB_OLD, WEB_NEW, API_NEW, TOOL_READ, BETA]
 
 @pytest.fixture
 async def synced(container: Container, github_api: respx.MockRouter) -> None:
-    mock_github(github_api, ALL)
-    assert (await container.sync.sync()).error is None
+    await import_releases(container, github_api, ALL)
 
 
 @pytest.mark.usefixtures("synced")

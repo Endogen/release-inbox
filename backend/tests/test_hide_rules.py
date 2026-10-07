@@ -6,7 +6,7 @@ from httpx import AsyncClient
 
 from ghr.container import Container
 from tests.conftest import list_ids
-from tests.github_fixtures import FakeRelease, mock_github
+from tests.github_fixtures import FakeRelease, import_releases
 
 WEB_OLD = FakeRelease(1, 10, "acme/app", "web@1.0.0", "2026-10-01T10:00:00Z")
 WEB_NEW = FakeRelease(2, 10, "acme/app", "web@1.1.0", "2026-10-03T10:00:00Z")
@@ -15,8 +15,7 @@ API = FakeRelease(3, 10, "acme/app", "api@2.0.0", "2026-10-02T10:00:00Z")
 
 @pytest.fixture
 async def synced(container: Container, github_api: respx.MockRouter) -> None:
-    mock_github(github_api, [WEB_OLD, WEB_NEW, API])
-    assert (await container.sync.sync()).error is None
+    await import_releases(container, github_api, [WEB_OLD, WEB_NEW, API])
 
 
 @pytest.mark.usefixtures("synced")

@@ -59,7 +59,6 @@ describe("useLiveUpdates", () => {
   afterEach(() => {
     cleanup()
     vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
 
   it("refetches releases on changes and after reconnecting, not on the first connect", () => {

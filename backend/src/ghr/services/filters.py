@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import ColumnElement, and_, exists, false, func, or_
+from sqlalchemy import ColumnElement, SQLColumnExpression, and_, exists, false, func, or_, true
 
 from ghr.domain import PrereleaseMode, View
 from ghr.models import HideRule, Release, Repository
@@ -19,18 +19,18 @@ class ViewContext:
     prereleases: PrereleaseMode
 
 
-def glob_matches(
-    value: ColumnElement[str], pattern: ColumnElement[str] | str
+def _glob_matches(
+    value: SQLColumnExpression[str], pattern: SQLColumnExpression[str] | str
 ) -> ColumnElement[bool]:
     """Case-insensitive SQLite GLOB (``*``, ``?`` and ``[...]`` wildcards)."""
     return func.lower(value).op("GLOB")(func.lower(pattern))
 
 
-def matches_pattern(pattern: ColumnElement[str] | str) -> ColumnElement[bool]:
+def matches_pattern(pattern: SQLColumnExpression[str] | str) -> ColumnElement[bool]:
     """True if the release name or tag matches the given glob pattern."""
     return or_(
-        glob_matches(func.coalesce(Release.name, ""), pattern),
-        glob_matches(Release.tag_name, pattern),
+        _glob_matches(func.coalesce(Release.name, ""), pattern),
+        _glob_matches(Release.tag_name, pattern),
     )
 
 
@@ -44,7 +44,7 @@ def is_hidden(prereleases: PrereleaseMode) -> ColumnElement[bool]:
     return or_(matches_rule, hidden_prerelease)
 
 
-def is_snoozed(now: datetime) -> ColumnElement[bool]:
+def _is_snoozed(now: datetime) -> ColumnElement[bool]:
     return and_(Release.snoozed_until.is_not(None), Release.snoozed_until > now)
 
 
@@ -59,22 +59,20 @@ def in_view(view: View, context: ViewContext) -> ColumnElement[bool]:
         case View.HIDDEN:
             return hidden
         case View.INBOX:
-            return and_(Release.read_at.is_(None), ~is_snoozed(context.now), ~hidden)
+            return and_(Release.read_at.is_(None), ~_is_snoozed(context.now), ~hidden)
         case View.SNOOZED:
-            return and_(Release.read_at.is_(None), is_snoozed(context.now), ~hidden)
+            return and_(Release.read_at.is_(None), _is_snoozed(context.now), ~hidden)
         case View.READ:
             return and_(Release.read_at.is_not(None), ~hidden)
 
 
-def matches_search(query: str | None) -> ColumnElement[bool] | None:
-    """Every whitespace-separated term must appear in the repository, name, tag or notes.
+def matches_search(query: str | None) -> ColumnElement[bool]:
+    """Every whitespace-separated term must appear in the repository, name, tag or notes. No
+    terms match everything.
 
     Requires ``Repository`` to be joined.
     """
-    terms = (query or "").split()
-    if not terms:
-        return None
-    return and_(*(_term_matches(term) for term in terms))
+    return and_(true(), *(_term_matches(term) for term in (query or "").split()))
 
 
 def _term_matches(term: str) -> ColumnElement[bool]:

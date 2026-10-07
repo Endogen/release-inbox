@@ -6,22 +6,20 @@ import pytest
 
 from ghr.services.breaking import (
     ComponentVersion,
-    classify,
+    breaking_flags,
     mentions_breaking_changes,
     parse_version,
 )
 
 
 @dataclass
-class FakeRelease:
+class Classifiable:
     tag_name: str
     body: str | None = None
-    breaking: bool = False
 
 
-def flags(*releases: FakeRelease) -> list[bool]:
-    classify(releases)
-    return [release.breaking for release in releases]
+def flags(*releases: Classifiable) -> list[bool]:
+    return breaking_flags((release.tag_name, release.body) for release in releases)
 
 
 @pytest.mark.parametrize(
@@ -60,15 +58,15 @@ def test_parses_component_and_major(tag: str, expected: ComponentVersion | None)
 
 def test_new_major_versions_per_component() -> None:
     assert flags(
-        FakeRelease("web@1.0.0"),
-        FakeRelease("api@1.0.0"),
-        FakeRelease("web@2.0.0"),
-        FakeRelease("api@1.1.0"),
+        Classifiable("web@1.0.0"),
+        Classifiable("api@1.0.0"),
+        Classifiable("web@2.0.0"),
+        Classifiable("api@1.1.0"),
     ) == [False, False, True, False]
 
 
 def test_backports_are_not_new_majors() -> None:
-    assert flags(FakeRelease("v2.0.0"), FakeRelease("v1.9.1"), FakeRelease("v2.0.1")) == [
+    assert flags(Classifiable("v2.0.0"), Classifiable("v1.9.1"), Classifiable("v2.0.1")) == [
         False,
         False,
         False,
@@ -84,11 +82,13 @@ def test_backports_are_not_new_majors() -> None:
     ],
 )
 def test_ignores_non_semantic_versions(tags: tuple[str, ...]) -> None:
-    assert not any(flags(*(FakeRelease(tag) for tag in tags)))
+    assert not any(flags(*(Classifiable(tag) for tag in tags)))
 
 
 def test_notes_flag_any_release() -> None:
-    assert flags(FakeRelease("v1.0.0"), FakeRelease("v1.1.0", body="BREAKING: dropped a flag")) == [
+    assert flags(
+        Classifiable("v1.0.0"), Classifiable("v1.1.0", body="BREAKING: dropped a flag")
+    ) == [
         False,
         True,
     ]

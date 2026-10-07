@@ -1,5 +1,7 @@
 import { BookMarkedIcon, EllipsisIcon, EyeOffIcon, LinkIcon, TagIcon } from "lucide-react"
 
+import { Hint } from "@/components/hint"
+import { MenuKeyHint } from "@/components/key-hint"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -7,13 +9,10 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { Release } from "@/lib/api/types"
-
-import { HOTKEYS } from "../shortcuts"
+import { HOTKEYS } from "@/lib/hotkeys"
 
 interface ReleaseMoreMenuProps {
   release: Release
@@ -26,23 +25,20 @@ export function ReleaseMoreMenu({ release, onCopyLink, onHide }: ReleaseMoreMenu
   const { repository } = release
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-sm" aria-label="More actions">
-              <EllipsisIcon />
-            </Button>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>More actions</TooltipContent>
-      </Tooltip>
+      <Hint label="More actions">
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label="More actions">
+            <EllipsisIcon />
+          </Button>
+        </DropdownMenuTrigger>
+      </Hint>
       <DropdownMenuContent align="end" className="w-60">
         <DropdownMenuGroup>
           <DropdownMenuItem asChild>
             <a href={release.html_url} target="_blank" rel="noopener noreferrer">
               <TagIcon />
               Open release
-              <Shortcut keyName={HOTKEYS.open} />
+              <MenuKeyHint hotkey={HOTKEYS.open} />
             </a>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
@@ -54,7 +50,7 @@ export function ReleaseMoreMenu({ release, onCopyLink, onHide }: ReleaseMoreMenu
           <DropdownMenuItem onSelect={onCopyLink}>
             <LinkIcon />
             Copy link to release
-            <Shortcut keyName={HOTKEYS.copyLink} />
+            <MenuKeyHint hotkey={HOTKEYS.copyLink} />
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
@@ -62,15 +58,10 @@ export function ReleaseMoreMenu({ release, onCopyLink, onHide }: ReleaseMoreMenu
           <DropdownMenuItem onSelect={onHide}>
             <EyeOffIcon />
             Hide releases like this…
-            <Shortcut keyName={HOTKEYS.hide} />
+            <MenuKeyHint hotkey={HOTKEYS.hide} />
           </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )
-}
-
-/** Keyboard hints only help where there is a keyboard. */
-function Shortcut({ keyName }: { keyName: string }) {
-  return <DropdownMenuShortcut className="pointer-coarse:hidden">{keyName}</DropdownMenuShortcut>
 }

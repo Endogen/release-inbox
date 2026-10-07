@@ -6,19 +6,18 @@ read is mirrored to GitHub on a best-effort basis after the response is sent (``
 GitHub has no API to mark a thread unread, so marking as unread is local only.
 """
 
-import asyncio
 import logging
 from collections.abc import Sequence
 from datetime import datetime
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ghr.db import utcnow
+from ghr.concurrency import gather_limited
+from ghr.db import get_existing, utcnow
 from ghr.domain import View
-from ghr.errors import ConflictError, NotFoundError
-from ghr.events import Event, EventBroker
+from ghr.errors import ConflictError
+from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.github.client import GitHubClient, GitHubError
 from ghr.models import Release, Repository
 from ghr.services.filters import ViewContext, in_view, is_hidden, matches_search
@@ -97,9 +96,7 @@ class InboxService:
 
         Returns the notification threads to mirror to GitHub with ``mirror_read``.
         """
-        repository = await self._session.get(Repository, repository_id)
-        if repository is None:
-            raise NotFoundError("Repository", repository_id)
+        repository = await get_existing(self._session, Repository, repository_id, "Repository")
 
         await self._github.unwatch_repository(repository_id)
         repository.unsubscribed_at = utcnow()
@@ -110,18 +107,16 @@ class InboxService:
 
     async def mirror_read(self, thread_ids: Sequence[str]) -> None:
         """Mark notification threads as read on GitHub. Failures are logged, not raised."""
-        semaphore = asyncio.Semaphore(_MIRROR_CONCURRENCY)
 
         async def mark(thread_id: str) -> None:
-            async with semaphore:
-                try:
-                    await self._github.mark_thread_read(thread_id)
-                except (GitHubError, httpx.HTTPError) as error:
-                    logger.warning(
-                        "Could not mark thread %s as read on GitHub: %s", thread_id, error
-                    )
+            try:
+                await self._github.mark_thread_read(thread_id)
+            except GitHubError as error:
+                logger.warning("Could not mark thread %s as read on GitHub: %s", thread_id, error)
 
-        await asyncio.gather(*(mark(thread_id) for thread_id in thread_ids))
+        await gather_limited(
+            (mark(thread_id) for thread_id in thread_ids), limit=_MIRROR_CONCURRENCY
+        )
 
     async def _older_in_view(
         self,
@@ -136,9 +131,8 @@ class InboxService:
             Release.repository_id == release.repository_id,
             Release.published_at <= release.published_at,
             in_view(view, context),
+            matches_search(search),
         ]
-        if (search_filter := matches_search(search)) is not None:
-            filters.append(search_filter)
         older = await self._session.scalars(select(Release).join(Repository).where(*filters))
         return older.all()
 
@@ -152,10 +146,7 @@ class InboxService:
 
     async def _commit(self) -> None:
         await self._session.commit()
-        self._broker.publish(Event("releases-changed"))
+        self._broker.publish(RELEASES_CHANGED)
 
     async def _get_release(self, release_id: int) -> Release:
-        release = await self._session.get(Release, release_id)
-        if release is None:
-            raise NotFoundError("Release", release_id)
-        return release
+        return await get_existing(self._session, Release, release_id, "Release")

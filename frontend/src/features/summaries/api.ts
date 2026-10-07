@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
-import { api, ApiError } from "@/lib/api/client"
+import { api, isNotFound } from "@/lib/api/client"
 import type { Summary, SummaryConfig } from "@/lib/api/types"
 
 /** The most releases one summary covers (``MAX_SUMMARIZED_RELEASES`` on the server). */
@@ -27,7 +27,7 @@ export function useSummary(releaseIds: readonly number[], enabled: boolean) {
       try {
         return await api.get<Summary>("/summaries", { query: { release_ids: releaseIds }, signal })
       } catch (error) {
-        if (error instanceof ApiError && error.status === 404) return null
+        if (isNotFound(error)) return null
         throw error
       }
     },

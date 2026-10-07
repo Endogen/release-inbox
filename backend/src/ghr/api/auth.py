@@ -1,5 +1,6 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Request, status
-from starlette.concurrency import run_in_threadpool
 
 from ghr.api.deps import ContainerDep, CurrentUserDep
 from ghr.schemas import Credentials, CurrentUser
@@ -28,7 +29,7 @@ async def login(credentials: Credentials, request: Request, container: Container
 
     password_hash = settings.password_hash.get_secret_value()
     # Argon2 is deliberately slow; keep it off the event loop.
-    valid = await run_in_threadpool(
+    valid = await asyncio.to_thread(
         verify_credentials,
         credentials.username,
         credentials.password,

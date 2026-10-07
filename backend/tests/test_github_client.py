@@ -61,3 +61,20 @@ async def test_waits_until_the_rate_limit_resets(
 
     assert raised.value.retry_after_seconds is not None
     assert 85 <= raised.value.retry_after_seconds <= 91
+
+
+async def test_a_rate_limit_isnt_lost_access(
+    github: GitHubClient, github_api: respx.MockRouter
+) -> None:
+    route = github_api.get("/repositories/10")
+    route.mock(return_value=Response(403, json={"message": "SAML enforcement"}))
+    assert await github.repository_exists(10) is False
+
+    route.mock(
+        return_value=Response(
+            403, json={"message": "API rate limit exceeded"}, headers={"Retry-After": "30"}
+        )
+    )
+    with pytest.raises(GitHubError) as raised:
+        await github.repository_exists(10)
+    assert raised.value.retry_after_seconds == 30

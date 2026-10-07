@@ -1,49 +1,36 @@
 import { MousePointerClickIcon, SearchXIcon } from "lucide-react"
 
+import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
-import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { KeyHint } from "@/components/key-hint"
+import { KbdGroup } from "@/components/ui/kbd"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ApiError } from "@/lib/api/client"
-
-import { HOTKEYS } from "./shortcuts"
+import { isNotFound } from "@/lib/api/client"
+import { HOTKEYS } from "@/lib/hotkeys"
 
 /** The detail pane while nothing is selected. */
 export function NoSelection() {
   return (
-    <Empty className="h-full">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <MousePointerClickIcon />
-        </EmptyMedia>
-        <EmptyTitle>Select a release</EmptyTitle>
-        <EmptyDescription>
-          Pick a release from the list to read its notes and the repository's README.
-        </EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <p className="flex items-center gap-2 text-xs text-muted-foreground">
-          <KbdGroup>
-            <Kbd>{HOTKEYS.next}</Kbd>
-            <Kbd>{HOTKEYS.previous}</Kbd>
-          </KbdGroup>
-          to move through releases, <Kbd>{HOTKEYS.help}</Kbd> for all shortcuts
-        </p>
-      </EmptyContent>
-    </Empty>
+    <EmptyState
+      icon={MousePointerClickIcon}
+      title="Select a release"
+      description="Pick a release from the list to read its notes and the repository's README."
+      className="h-full"
+    >
+      <p className="flex items-center gap-2 text-xs text-muted-foreground pointer-coarse:hidden">
+        <KbdGroup>
+          <KeyHint hotkey={HOTKEYS.next} />
+          <KeyHint hotkey={HOTKEYS.previous} />
+        </KbdGroup>
+        to move through releases, <KeyHint hotkey={HOTKEYS.help} /> for all shortcuts
+      </p>
+    </EmptyState>
   )
 }
 
 /** The detail pane when the selected release couldn't be loaded. */
 export function MissingRelease({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  if (!(error instanceof ApiError && error.status === 404)) {
+  if (!isNotFound(error)) {
     return (
       <ErrorState
         className="h-full"
@@ -54,15 +41,12 @@ export function MissingRelease({ error, onRetry }: { error: Error; onRetry: () =
     )
   }
   return (
-    <Empty className="h-full">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <SearchXIcon />
-        </EmptyMedia>
-        <EmptyTitle>Release not found</EmptyTitle>
-        <EmptyDescription>It may have been deleted on GitHub.</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
+    <EmptyState
+      icon={SearchXIcon}
+      title="Release not found"
+      description="It may have been deleted on GitHub."
+      className="h-full"
+    />
   )
 }
 

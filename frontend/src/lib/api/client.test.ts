@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
-import { api, ApiError } from "./client"
+import { api, ApiError, isUnauthorized } from "./client"
 
 function respond(response: Response) {
   const fetchMock = vi.fn().mockResolvedValue(response)
@@ -22,8 +22,6 @@ async function failure(request: Promise<unknown>): Promise<ApiError> {
 }
 
 describe("api", () => {
-  afterEach(() => vi.unstubAllGlobals())
-
   it("builds the query, repeating arrays and leaving out empty values", async () => {
     const fetchMock = respond(json(200, {}))
 
@@ -74,6 +72,6 @@ describe("api", () => {
     const error = await failure(api.get("/releases"))
 
     expect(error.message).toBe("Bad Gateway")
-    expect(error.isUnauthorized).toBe(false)
+    expect(isUnauthorized(error)).toBe(false)
   })
 })

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import { unsubscribeFromPush } from "@/features/notifications/push"
 import { useDeferredActionQueue } from "@/features/releases/deferred-actions/context"
-import { api, ApiError } from "@/lib/api/client"
+import { api, isUnauthorized } from "@/lib/api/client"
 import type { CurrentUser } from "@/lib/api/types"
 
 export const authKeys = {
@@ -17,7 +17,7 @@ export function useCurrentUser() {
       try {
         return await api.get<CurrentUser>("/auth/me", { signal })
       } catch (error) {
-        if (error instanceof ApiError && error.isUnauthorized) return null
+        if (isUnauthorized(error)) return null
         throw error
       }
     },

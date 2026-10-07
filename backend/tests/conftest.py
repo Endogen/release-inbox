@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -13,8 +14,10 @@ from ghr.app import create_app
 from ghr.cli import alembic_config
 from ghr.config import Settings
 from ghr.container import Container
+from ghr.github.client import format_timestamp
 from ghr.security import hash_password
 from ghr.services.notifications import Notification
+from ghr.services.summaries import Summarizer
 
 GITHUB_API = "https://api.github.test"
 USERNAME = "admin"
@@ -33,12 +36,12 @@ def make_settings(tmp_path: Path, **overrides: object) -> Settings:
     }
     values.update(overrides)
     # Never read a developer's local .env during tests.
-    return Settings(_env_file=None, **values)  # type: ignore[arg-type, call-arg]
+    return Settings(_env_file=None, **values)  # pyright: ignore[reportCallIssue]
 
 
 def timestamp(*, days_ago: float = 0) -> str:
     """An ISO timestamp relative to now, as GitHub sends them."""
-    return (datetime.now(UTC) - timedelta(days=days_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return format_timestamp(datetime.now(UTC) - timedelta(days=days_ago))
 
 
 @pytest.fixture
@@ -57,12 +60,23 @@ async def migrate(settings: Settings) -> None:
     await asyncio.to_thread(command.upgrade, alembic_config(settings.sync_database_url), "head")
 
 
+@asynccontextmanager
+async def running_container(
+    settings: Settings, *, summarizer: Summarizer | None = None
+) -> AsyncIterator[Container]:
+    """An app's components on a migrated database, closed afterwards."""
+    await migrate(settings)
+    container = Container.build(settings, summarizer=summarizer)
+    try:
+        yield container
+    finally:
+        await container.aclose()
+
+
 @pytest.fixture
 async def container(settings: Settings) -> AsyncIterator[Container]:
-    await migrate(settings)
-    container = Container.build(settings)
-    yield container
-    await container.aclose()
+    async with running_container(settings) as container:
+        yield container
 
 
 class SentNotifications(list[Notification]):

@@ -66,7 +66,6 @@ describe("DeferredActionsProvider", () => {
     cleanup()
     toasts.clear()
     vi.useRealTimers()
-    vi.unstubAllGlobals()
   })
 
   it("undo from the toast never reaches the server", async () => {

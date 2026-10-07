@@ -19,7 +19,7 @@ from ghr.services.notifications.telegram import TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
 from ghr.services.snooze import SnoozeWaker
 from ghr.services.stars import StarCounter
-from ghr.services.summaries import ClaudeSummarizer, Summarizer
+from ghr.services.summaries import Summarizer
 from ghr.services.sync import NotificationSyncService
 from ghr.tasks import TaskSupervisor
 
@@ -89,6 +89,9 @@ class Container:
             refresh_window=timedelta(days=settings.release_refresh_days),
         )
         if summarizer is None and (api_key := _secret(settings.anthropic_api_key)):
+            # Loaded only when summaries are set up: the Anthropic SDK takes seconds to import.
+            from ghr.services.claude import ClaudeSummarizer  # noqa: PLC0415
+
             summarizer = ClaudeSummarizer(api_key=api_key, model=settings.anthropic_model)
         return cls(
             settings=settings,

@@ -1,6 +1,5 @@
+import { cn } from "cn"
 import { RocketIcon } from "lucide-react"
-
-import { cn } from "@/lib/utils"
 
 export function BrandMark({ className }: { className?: string }) {
   return (

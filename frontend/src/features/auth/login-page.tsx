@@ -13,7 +13,7 @@ import {
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Spinner } from "@/components/ui/spinner"
-import { ApiError } from "@/lib/api/client"
+import { ApiError, isUnauthorized } from "@/lib/api/client"
 
 import { useLogin } from "./api"
 
@@ -24,7 +24,7 @@ export function LoginPage() {
 
   const error = !login.error
     ? null
-    : login.error instanceof ApiError && login.error.isUnauthorized
+    : isUnauthorized(login.error)
       ? "That username and password don't match."
       : login.error instanceof ApiError && login.error.status < 500
         ? login.error.message

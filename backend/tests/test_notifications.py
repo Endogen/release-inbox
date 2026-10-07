@@ -23,7 +23,13 @@ from ghr.services.notifications import Notification, Notifier
 from ghr.services.notifications.ntfy import NtfyChannel
 from ghr.services.notifications.telegram import TELEGRAM_API_URL, TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
-from tests.conftest import SentNotifications, build_client, make_settings, migrate, sign_in
+from tests.conftest import (
+    SentNotifications,
+    build_client,
+    make_settings,
+    running_container,
+    sign_in,
+)
 from tests.github_fixtures import FakeRelease, mock_github
 
 NOTIFICATION = Notification(
@@ -209,7 +215,7 @@ async def test_web_push_removes_expired_subscriptions(
     await channel.subscribe("https://push.example/gone", "p256dh", "auth")
 
     async def fake_webpush(*, subscription_info: dict[str, object], **_: object) -> None:
-        if subscription_info["endpoint"].endswith("gone"):  # type: ignore[union-attr]
+        if str(subscription_info["endpoint"]).endswith("gone"):
             raise WebPushException("gone", response=SimpleNamespace(status_code=410))
 
     monkeypatch.setattr("ghr.services.notifications.web_push.webpush_async", fake_webpush)
@@ -225,12 +231,12 @@ async def push_client(tmp_path: Path) -> AsyncIterator[AsyncClient]:
     """Signed-in client of an app with browser push configured."""
     public_key, private_key = vapid_key_pair()
     settings = make_settings(tmp_path, vapid_public_key=public_key, vapid_private_key=private_key)
-    await migrate(settings)
-    container = Container.build(settings)
-    async with build_client(settings, container) as client:
+    async with (
+        running_container(settings) as container,
+        build_client(settings, container) as client,
+    ):
         await sign_in(client)
         yield client
-    await container.aclose()
 
 
 def push_keys() -> dict[str, str]:

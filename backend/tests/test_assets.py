@@ -7,7 +7,7 @@ from sqlalchemy import update
 
 from ghr.container import Container
 from ghr.models import Release
-from tests.github_fixtures import FakeRelease, mock_github
+from tests.github_fixtures import FakeRelease, import_releases
 
 APP = FakeRelease(
     1, 10, "acme/app", "v1.0.0", "2026-10-01T10:00:00Z", assets=("app-linux.tar.gz", "app.exe")
@@ -17,8 +17,7 @@ TOOL = FakeRelease(2, 20, "acme/tool", "v2.0.0", "2026-10-02T10:00:00Z")
 
 @pytest.fixture
 async def synced(container: Container, github_api: respx.MockRouter) -> None:
-    mock_github(github_api, [APP, TOOL])
-    assert (await container.sync.sync()).error is None
+    await import_releases(container, github_api, [APP, TOOL])
 
 
 async def forget_assets(container: Container) -> None:

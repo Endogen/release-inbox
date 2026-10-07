@@ -3,6 +3,7 @@
 import asyncio
 from datetime import timedelta
 
+import pytest
 import respx
 from httpx import AsyncClient, ConnectError, Response
 from sqlalchemy import select
@@ -80,7 +81,7 @@ class TestImport:
         assert request.url.params["since"] == "2026-10-05T11:55:30Z"
 
     async def test_lists_update_after_every_batch(
-        self, container: Container, github_api: respx.MockRouter
+        self, container: Container, github_api: respx.MockRouter, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         releases = [
             FakeRelease(100 + index, 10, "acme/app", f"v1.{index}.0", "2026-10-01T10:00:00Z")
@@ -88,7 +89,7 @@ class TestImport:
         ]
         mock_github(github_api, releases)
         published: list[Event] = []
-        container.broker.publish = published.append  # type: ignore[method-assign]
+        monkeypatch.setattr(container.broker, "publish", published.append)
 
         await container.sync.sync()
 
@@ -175,7 +176,7 @@ class TestFailures:
         await container.tasks.wait()
 
         assert result.retry_after_seconds == 120
-        assert "secondary rate limit" in (await sync_state(container)).last_error  # type: ignore[operator]
+        assert "secondary rate limit" in ((await sync_state(container)).last_error or "")
         # The first batch of 25 was stored, won't be fetched again, and was announced.
         assert len(await stored_release_ids(container)) == 26
         assert [notification.title for notification in sent] == ["25 new releases"]
@@ -268,7 +269,7 @@ async def test_watching_again_after_unsubscribing_brings_the_repository_back(
     github_api.patch(url__regex=r"/notifications/threads/.+").mock(return_value=Response(205))
     await user_client.post("/api/repositories/10/unsubscribe")
     async with container.session_factory() as session:
-        unsubscribed_at = (await session.get(Repository, 10)).unsubscribed_at  # type: ignore[union-attr]
+        unsubscribed_at = (await session.get_one(Repository, 10)).unsubscribed_at
     assert unsubscribed_at is not None
 
     later = FakeRelease(
@@ -278,4 +279,4 @@ async def test_watching_again_after_unsubscribing_brings_the_repository_back(
     await container.sync.sync()
 
     async with container.session_factory() as session:
-        assert (await session.get(Repository, 10)).unsubscribed_at is None  # type: ignore[union-attr]
+        assert (await session.get_one(Repository, 10)).unsubscribed_at is None

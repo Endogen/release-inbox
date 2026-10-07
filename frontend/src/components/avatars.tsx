@@ -1,6 +1,7 @@
+import { cn } from "cn"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import type { Repository } from "@/lib/api/types"
-import { cn } from "@/lib/utils"
 
 function initials(fullName: string): string {
   const name = fullName.split("/").at(-1) ?? fullName

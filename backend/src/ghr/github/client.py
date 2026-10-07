@@ -1,8 +1,8 @@
 """Asynchronous client for the parts of the GitHub REST API the application needs."""
 
 import base64
-import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -19,8 +19,6 @@ from ghr.github.models import (
     NotificationThread,
 )
 
-logger = logging.getLogger(__name__)
-
 API_VERSION = "2022-11-28"
 NOTIFICATIONS_PAGE_SIZE = 50
 
@@ -29,10 +27,16 @@ _RESOURCE_UNAVAILABLE = frozenset({403, 404, 410, 451})
 
 
 class GitHubError(Exception):
+    """A GitHub request failed: GitHub answered with an error, or didn't answer at all."""
+
     def __init__(
-        self, status_code: int, message: str, *, retry_after_seconds: int | None = None
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        retry_after_seconds: int | None = None,
     ) -> None:
-        super().__init__(f"GitHub API error {status_code}: {message}")
+        super().__init__(message)
         self.status_code = status_code
         self.retry_after_seconds = retry_after_seconds
 
@@ -42,11 +46,19 @@ class GitHubError(Exception):
         return self.status_code in _RESOURCE_UNAVAILABLE and self.retry_after_seconds is None
 
 
+class GitHubUnreachableError(GitHubError):
+    """No answer from GitHub: a network failure or a timeout."""
+
+    def __init__(self, error: httpx.RequestError) -> None:
+        # Network errors often have no text of their own.
+        super().__init__(f"Couldn't reach GitHub ({str(error) or type(error).__name__})")
+
+
 class UntrustedUrlError(GitHubError):
     """A URL from a GitHub payload points outside the API origin and was not requested."""
 
     def __init__(self, url: str) -> None:
-        super().__init__(0, f"Refusing to call a URL outside the GitHub API: {url}")
+        super().__init__(f"Refusing to call a URL outside the GitHub API: {url}")
 
     @property
     def is_resource_unavailable(self) -> bool:
@@ -124,7 +136,7 @@ class GitHubClient:
             params["since"] = format_timestamp(since)
         headers = {"If-Modified-Since": if_modified_since} if if_modified_since else {}
 
-        response = await self._http.get("/notifications", params=params, headers=headers)
+        response = await self._request("GET", "/notifications", params=params, headers=headers)
         poll_interval = _parse_int(response.headers.get("X-Poll-Interval"))
         server_time = _parse_http_date(response.headers.get("Date"))
         if response.status_code == httpx.codes.NOT_MODIFIED:
@@ -134,7 +146,7 @@ class GitHubClient:
         last_modified = response.headers.get("Last-Modified")
         threads = _parse_threads(response)
         while next_url := response.links.get("next", {}).get("url"):
-            response = await self._http.get(self._checked(next_url))
+            response = await self._request("GET", self._checked(next_url))
             _raise_for_status(response)
             threads.extend(_parse_threads(response))
 
@@ -152,27 +164,27 @@ class GitHubClient:
 
         Returns ``None`` if it no longer exists and ``NOT_MODIFIED`` if ``etag`` still matches.
         """
-        headers = {"If-None-Match": etag} if etag else {}
-        response = await self._http.get(self._checked(url), headers=headers)
-        if response.status_code == httpx.codes.NOT_MODIFIED:
-            return NOT_MODIFIED
-        if response.status_code == httpx.codes.NOT_FOUND:
-            return None
-        _raise_for_status(response)
+        response = await self._get_conditional(self._checked(url), etag)
+        if not isinstance(response, httpx.Response):
+            return response
         return FetchedRelease(
             GitHubRelease.model_validate(response.json()), response.headers.get("ETag")
         )
 
     async def mark_thread_read(self, thread_id: str) -> None:
-        response = await self._http.patch(f"/notifications/threads/{thread_id}")
+        response = await self._request("PATCH", f"/notifications/threads/{thread_id}")
         _raise_for_status(response)
 
     async def repository_exists(self, repository_id: int) -> bool:
         """Whether the repository is still accessible with the token."""
-        response = await self._http.get(f"/repositories/{repository_id}")
-        if response.status_code in (httpx.codes.NOT_FOUND, httpx.codes.FORBIDDEN):
-            return False
-        _raise_for_status(response)
+        response = await self._request("GET", f"/repositories/{repository_id}")
+        try:
+            _raise_for_status(response)
+        except GitHubError as error:
+            # Gone or no longer accessible, unless GitHub only asks to wait (rate limit).
+            if error.is_resource_unavailable:
+                return False
+            raise
         return True
 
     async def unwatch_repository(self, repository_id: int) -> None:
@@ -180,7 +192,7 @@ class GitHubClient:
 
         A repository that no longer exists counts as unwatched.
         """
-        response = await self._http.delete(f"/repositories/{repository_id}/subscription")
+        response = await self._request("DELETE", f"/repositories/{repository_id}/subscription")
         if response.status_code == httpx.codes.NOT_FOUND:
             return
         _raise_for_status(response)
@@ -193,13 +205,9 @@ class GitHubClient:
         Returns ``None`` if the repository no longer exists and ``NOT_MODIFIED`` if ``etag``
         still matches.
         """
-        headers = {"If-None-Match": etag} if etag else {}
-        response = await self._http.get(f"/repositories/{repository_id}", headers=headers)
-        if response.status_code == httpx.codes.NOT_MODIFIED:
-            return NOT_MODIFIED
-        if response.status_code == httpx.codes.NOT_FOUND:
-            return None
-        _raise_for_status(response)
+        response = await self._get_conditional(f"/repositories/{repository_id}", etag)
+        if not isinstance(response, httpx.Response):
+            return response
         stats = GitHubRepositoryStats.model_validate(response.json())
         return RepositoryStars(stats.stargazers_count, response.headers.get("ETag"))
 
@@ -211,14 +219,9 @@ class GitHubClient:
         Returns ``None`` if the repository has no README and ``NOT_MODIFIED`` if ``etag`` still
         matches the current version.
         """
-        headers = {"If-None-Match": etag} if etag else {}
-        response = await self._http.get(f"/repositories/{repository_id}/readme", headers=headers)
-        if response.status_code == httpx.codes.NOT_MODIFIED:
-            return NOT_MODIFIED
-        if response.status_code == httpx.codes.NOT_FOUND:
-            return None
-        _raise_for_status(response)
-
+        response = await self._get_conditional(f"/repositories/{repository_id}/readme", etag)
+        if not isinstance(response, httpx.Response):
+            return response
         # The contents API always encodes file content in base64.
         readme = GitHubReadme.model_validate(response.json())
         return ReadmeResult(
@@ -227,6 +230,34 @@ class GitHubClient:
             download_url=readme.download_url,
             etag=response.headers.get("ETag"),
         )
+
+    async def _get_conditional(
+        self, url: str, etag: str | None
+    ) -> httpx.Response | NotModified | None:
+        """GET with ``If-None-Match``: ``NOT_MODIFIED`` if ``etag`` still matches, ``None`` if
+        the resource doesn't exist. Other failures raise ``GitHubError``."""
+        headers = {"If-None-Match": etag} if etag else {}
+        response = await self._request("GET", url, headers=headers)
+        if response.status_code == httpx.codes.NOT_MODIFIED:
+            return NOT_MODIFIED
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        _raise_for_status(response)
+        return response
+
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        params: Mapping[str, str | int] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> httpx.Response:
+        """Send a request; a failure without a response raises ``GitHubUnreachableError``."""
+        try:
+            return await self._http.request(method, url, params=params, headers=headers)
+        except httpx.RequestError as error:
+            raise GitHubUnreachableError(error) from error
 
     def _checked(self, url: str) -> str:
         """Refuse absolute URLs outside the API origin, so the token never leaves GitHub."""
@@ -286,7 +317,7 @@ def _raise_for_status(response: httpx.Response) -> None:
     except ValueError:
         message = response.text
     raise GitHubError(
-        response.status_code,
-        message,
+        f"GitHub API error {response.status_code}: {message}",
+        status_code=response.status_code,
         retry_after_seconds=_retry_after_seconds(response, message),
     )

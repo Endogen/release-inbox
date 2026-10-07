@@ -83,19 +83,19 @@ class Notifier:
                 statement = statement.where(Release.prerelease.is_(False))
             releases = list(await session.scalars(statement))
         if releases:
-            await self.send(new_releases_notification(releases))
+            await self.send(_new_releases_notification(releases))
 
     async def announce_snooze_ended(self, releases: Sequence[Release]) -> None:
         """Remind about snoozed releases; the user asked for this, so mutes don't apply."""
         if releases:
-            await self.send(snooze_ended_notification(releases))
+            await self.send(_snooze_ended_notification(releases))
 
 
 def _title(release: Release) -> str:
     return release.name or release.tag_name
 
 
-def new_releases_notification(releases: Sequence[Release]) -> Notification:
+def _new_releases_notification(releases: Sequence[Release]) -> Notification:
     if len(releases) == 1:
         release = releases[0]
         return Notification(
@@ -115,7 +115,7 @@ def new_releases_notification(releases: Sequence[Release]) -> Notification:
     )
 
 
-def snooze_ended_notification(releases: Sequence[Release]) -> Notification:
+def _snooze_ended_notification(releases: Sequence[Release]) -> Notification:
     if len(releases) == 1:
         release = releases[0]
         return Notification(

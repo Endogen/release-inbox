@@ -3,9 +3,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ghr.db import utcnow
-from ghr.errors import NotFoundError
-from ghr.events import Event, EventBroker
+from ghr.db import get_existing, utcnow
+from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.models import Repository
 from ghr.schemas import RepositoryOut
 
@@ -17,9 +16,7 @@ class RepositoryService:
 
     async def set_notifications(self, repository_id: int, *, enabled: bool) -> RepositoryOut:
         """Turn push notifications for new releases of the repository on or off."""
-        repository = await self._session.get(Repository, repository_id)
-        if repository is None:
-            raise NotFoundError("Repository", repository_id)
+        repository = await get_existing(self._session, Repository, repository_id, "Repository")
 
         if enabled:
             repository.notifications_muted_at = None
@@ -27,7 +24,7 @@ class RepositoryService:
             repository.notifications_muted_at = utcnow()
         await self._session.commit()
 
-        self._broker.publish(Event("releases-changed"))
+        self._broker.publish(RELEASES_CHANGED)
         return RepositoryOut.model_validate(repository)
 
     async def list_muted(self) -> list[RepositoryOut]:

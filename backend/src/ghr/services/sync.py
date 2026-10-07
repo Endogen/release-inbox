@@ -7,18 +7,18 @@ single writer, and holding its lock across network calls would block the user's 
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Iterable, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import Enum, auto
 
-import httpx
 import pydantic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ghr.concurrency import gather_limited
 from ghr.db import utcnow
-from ghr.events import Event, EventBroker
+from ghr.events import RELEASES_CHANGED, Event, EventBroker
 from ghr.github.client import (
     FetchedRelease,
     GitHubClient,
@@ -92,7 +92,8 @@ class NotificationSyncService:
     def in_progress(self) -> bool:
         return self._lock.locked()
 
-    async def status(self) -> SyncStatus:
+    async def status(self, *, rate_limited_until: datetime | None) -> SyncStatus:
+        """The state of the last sync. The scheduler knows about rate limits."""
         async with self._session_factory() as session:
             state = await session.get(SyncState, _STATE_ID)
         return SyncStatus(
@@ -100,6 +101,7 @@ class NotificationSyncService:
             last_attempt_at=state.last_attempt_at if state else None,
             last_error=state.last_error if state else None,
             in_progress=self.in_progress,
+            rate_limited_until=rate_limited_until,
         )
 
     async def sync(self) -> SyncResult:
@@ -120,9 +122,6 @@ class NotificationSyncService:
             except GitHubError as error:
                 logger.warning("Refreshing recent releases failed: %s", error)
                 return RefreshResult(0, retry_after_seconds=error.retry_after_seconds)
-            except httpx.HTTPError as error:
-                logger.warning("Refreshing recent releases failed: %s", error)
-                return RefreshResult(0)
 
     # Notification import
 
@@ -139,8 +138,6 @@ class NotificationSyncService:
             await self._import(result.threads, into=imported)
         except GitHubError as error:
             return await self._record_failure(error, retry_after=error.retry_after_seconds)
-        except httpx.HTTPError as error:
-            return await self._record_failure(error)
         except Exception as error:
             logger.exception("Notification sync failed unexpectedly")
             return await self._record_failure(error)
@@ -164,7 +161,7 @@ class NotificationSyncService:
             stored = await self._store_releases(fetched)
             if stored:
                 into.extend(stored)
-                self._broker.publish(Event("releases-changed"))
+                self._broker.publish(RELEASES_CHANGED)
 
     async def _store_repositories(self, threads: Iterable[NotificationThread]) -> None:
         unique = {thread.repository.id: thread.repository for thread in threads}
@@ -191,7 +188,9 @@ class NotificationSyncService:
             assert thread.subject.url is not None  # guaranteed by NotificationThread.is_release
             return await self._fetch_tolerantly(thread.subject.url)
 
-        results = await _gather_limited([fetch(thread) for thread in threads])
+        results = await gather_limited(
+            (fetch(thread) for thread in threads), limit=_FETCH_CONCURRENCY
+        )
         return [
             (thread, result)
             for thread, result in zip(threads, results, strict=True)
@@ -240,14 +239,15 @@ class NotificationSyncService:
         if not candidates:
             return 0
 
-        results = await _gather_limited(
-            [
+        results = await gather_limited(
+            (
                 self._fetch_tolerantly(
                     GitHubClient.release_path(release.repository_id, release.id),
                     etag=release.etag,
                 )
                 for release in candidates
-            ]
+            ),
+            limit=_FETCH_CONCURRENCY,
         )
         gone = await self._confirm_deleted(
             [
@@ -290,7 +290,7 @@ class NotificationSyncService:
 
         if changed:
             logger.info("Refreshed %d releases", len(changed))
-            self._broker.publish(Event("releases-changed"))
+            self._broker.publish(RELEASES_CHANGED)
         if promoted:
             # A pre-release that became a release is news, even if pre-releases are muted.
             self._tasks.spawn(self._notifier.announce_new_releases(promoted), name="announce")
@@ -353,7 +353,7 @@ class NotificationSyncService:
         self, error: Exception, *, retry_after: int | None = None
     ) -> SyncResult:
         logger.warning("Notification sync failed: %s", error)
-        message = _describe_failure(error)
+        message = str(error) or type(error).__name__
         async with self._session_factory() as session:
             state = await session.get(SyncState, _STATE_ID)
             assert state is not None  # created by _begin_attempt
@@ -363,23 +363,6 @@ class NotificationSyncService:
 
     def _publish_status(self, *, in_progress: bool) -> None:
         self._broker.publish(Event("sync-status", {"in_progress": in_progress}))
-
-
-async def _gather_limited[T](awaitables: Sequence[Awaitable[T]]) -> list[T]:
-    """Await with bounded concurrency; the first failure cancels the rest."""
-    semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
-
-    async def limited(awaitable: Awaitable[T]) -> T:
-        async with semaphore:
-            return await awaitable
-
-    try:
-        async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(limited(awaitable)) for awaitable in awaitables]
-    except ExceptionGroup as errors:
-        # Report the first failure; the whole sync is retried later.
-        raise errors.exceptions[0] from errors
-    return [task.result() for task in tasks]
 
 
 async def _upsert_repository(session: AsyncSession, data: GitHubRepository) -> None:
@@ -408,12 +391,16 @@ async def _upsert_repository(session: AsyncSession, data: GitHubRepository) -> N
 async def _classify(session: AsyncSession, repository_ids: Iterable[int]) -> None:
     """Recompute ``breaking`` for all releases of the given repositories."""
     for repository_id in repository_ids:
-        releases = await session.scalars(
-            select(Release)
-            .where(Release.repository_id == repository_id)
-            .order_by(Release.published_at, Release.id)
-        )
-        breaking.classify(releases.all())
+        releases = (
+            await session.scalars(
+                select(Release)
+                .where(Release.repository_id == repository_id)
+                .order_by(Release.published_at, Release.id)
+            )
+        ).all()
+        flags = breaking.breaking_flags((release.tag_name, release.body) for release in releases)
+        for release, flag in zip(releases, flags, strict=True):
+            release.breaking = flag
 
 
 def _new_release(
@@ -460,11 +447,3 @@ def _release_id_from_api_url(url: str | None) -> int | None:
         return None
     last_segment = url.rstrip("/").rsplit("/", 1)[-1]
     return int(last_segment) if last_segment.isdigit() else None
-
-
-def _describe_failure(error: Exception) -> str:
-    """A message for the sync status; network errors often have no text of their own."""
-    detail = str(error) or type(error).__name__
-    if isinstance(error, httpx.TransportError):
-        return f"Couldn't reach GitHub ({detail})"
-    return detail

@@ -1,14 +1,7 @@
 import { TriangleAlertIcon } from "lucide-react"
 
+import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 
 interface ErrorStateProps {
   title: string
@@ -27,19 +20,15 @@ export function ErrorState({
   className,
 }: ErrorStateProps) {
   return (
-    <Empty className={className}>
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <TriangleAlertIcon />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-      <EmptyContent>
-        <Button variant="outline" size="sm" onClick={onAction}>
-          {actionLabel}
-        </Button>
-      </EmptyContent>
-    </Empty>
+    <EmptyState
+      icon={TriangleAlertIcon}
+      title={title}
+      description={description}
+      className={className}
+    >
+      <Button variant="outline" size="sm" onClick={onAction}>
+        {actionLabel}
+      </Button>
+    </EmptyState>
   )
 }

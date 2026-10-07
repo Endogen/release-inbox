@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { copyToClipboard } from "./clipboard"
 
 describe("copyToClipboard", () => {
-  afterEach(() => vi.unstubAllGlobals())
-
   it("writes the text", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     vi.stubGlobal("navigator", { clipboard: { writeText } })

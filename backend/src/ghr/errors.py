@@ -12,3 +12,7 @@ class ConflictError(Exception):
 
 class InvalidRequestError(Exception):
     """The request is well-formed but can't be processed as asked."""
+
+
+class SummaryError(Exception):
+    """The summary couldn't be created; the message is safe to show to the user."""

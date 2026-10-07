@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.types import TypeDecorator
 
+from ghr.errors import NotFoundError
+
 
 class Base(DeclarativeBase):
     pass
@@ -56,3 +58,11 @@ def create_engine(database_url: str) -> AsyncEngine:
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def get_existing[T](session: AsyncSession, model: type[T], ident: object, label: str) -> T:
+    """The row of ``model`` with primary key ``ident``; ``NotFoundError`` if there is none."""
+    row = await session.get(model, ident)
+    if row is None:
+        raise NotFoundError(label, ident)
+    return row

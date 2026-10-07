@@ -5,14 +5,25 @@ import asyncio
 import contextlib
 import logging
 import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
+from typing import Protocol
 
 from ghr.db import utcnow
+from ghr.schemas import SyncStatus
 from ghr.services.snooze import SnoozeWaker
 from ghr.services.stars import StarCounter
 from ghr.services.sync import NotificationSyncService
 
 logger = logging.getLogger(__name__)
+
+
+class _RetryHint(Protocol):
+    @property
+    def retry_after_seconds(self) -> int | None:
+        """Set when GitHub asked to wait before the next request."""
+        ...
+
 
 #: How often expired snoozes are checked, independent of polling and rate limits.
 SNOOZE_CHECK_SECONDS = 60
@@ -67,6 +78,9 @@ class SyncScheduler:
         remaining = self._backoff_until - time.monotonic()
         return utcnow() + timedelta(seconds=remaining) if remaining > 0 else None
 
+    async def status(self) -> SyncStatus:
+        return await self._sync.status(rate_limited_until=self.backoff_until)
+
     def request_sync(self) -> bool:
         """Sync as soon as possible. Returns False if GitHub asked to wait (the sync then runs
         when the wait is over)."""
@@ -76,34 +90,38 @@ class SyncScheduler:
     async def run_once(self) -> float:
         """Sync, and refresh recent releases when due. Returns seconds until the next sync."""
         delay: float = self._min_interval
-        try:
-            result = await self._sync.sync()
-            delay = max(delay, result.poll_interval_seconds or 0)
-            delay = max(delay, self._back_off(result.retry_after_seconds))
-        except Exception:
-            # Keep polling: one failed run must not stop future synchronisation.
-            logger.exception("Unexpected error during notification sync")
+        sync = await self._run("notification sync", self._sync.sync)
+        results: list[_RetryHint | None] = [sync]
+        if sync is not None:
+            delay = max(delay, sync.poll_interval_seconds or 0)
         if time.monotonic() >= self._next_refresh and not self.backing_off:
             self._next_refresh = time.monotonic() + self._refresh_interval
-            try:
-                refresh = await self._sync.refresh_recent(published_within=self._refresh_window)
-                delay = max(delay, self._back_off(refresh.retry_after_seconds))
-            except Exception:
-                logger.exception("Unexpected error while refreshing releases")
+            results.append(
+                await self._run(
+                    "refreshing releases",
+                    lambda: self._sync.refresh_recent(published_within=self._refresh_window),
+                )
+            )
             if not self.backing_off:
-                try:
-                    stars = await self._stars.refresh_due()
-                    delay = max(delay, self._back_off(stars.retry_after_seconds))
-                except Exception:
-                    logger.exception("Unexpected error while refreshing star counts")
-        return delay
+                results.append(await self._run("refreshing star counts", self._stars.refresh_due))
+        waits = (result.retry_after_seconds or 0 for result in results if result is not None)
+        return max(delay, *waits)
 
-    def _back_off(self, retry_after_seconds: int | None) -> float:
-        """Respect a wait GitHub asked for; returns it (0 if there is none)."""
-        if retry_after_seconds is None:
-            return 0
-        self._backoff_until = max(self._backoff_until, time.monotonic() + retry_after_seconds)
-        return retry_after_seconds
+    async def _run[R: _RetryHint](self, job: str, work: Callable[[], Awaitable[R]]) -> R | None:
+        """Run a job, backing off if GitHub asked to wait. A failure is logged, not raised: one
+        failed run must not stop future ones."""
+        try:
+            result = await work()
+        except Exception:
+            logger.exception("Unexpected error in %s", job)
+            return None
+        self._back_off(result.retry_after_seconds)
+        return result
+
+    def _back_off(self, retry_after_seconds: int | None) -> None:
+        """Respect a wait GitHub asked for."""
+        if retry_after_seconds is not None:
+            self._backoff_until = max(self._backoff_until, time.monotonic() + retry_after_seconds)
 
     async def _poll_loop(self) -> None:
         while True:

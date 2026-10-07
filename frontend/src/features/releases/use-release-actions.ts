@@ -4,6 +4,7 @@ import { useSetRepositoryNotifications } from "@/features/repositories/api"
 import type { Release, ReleaseListItem, Repository, View } from "@/lib/api/types"
 import { copyToClipboard } from "@/lib/clipboard"
 import { formatAbsolute } from "@/lib/time"
+import { toastError, toastWithUndo } from "@/lib/toasts"
 
 import { useMarkRead, useMarkUnread, useSnooze, useUnsnooze } from "./api"
 import { useDeferredActions } from "./deferred-actions/context"
@@ -80,12 +81,9 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     const unread = moveTo(release, "inbox")
     markUnreadMutation.mutate(unread, {
       onSuccess: () =>
-        toast.success("Moved back to the inbox", {
+        toastWithUndo("Moved back to the inbox", {
           description: releaseLabel(release),
-          action: {
-            label: "Undo",
-            onClick: () => markReadMutation.mutate({ ...unread, leaves: null }),
-          },
+          onUndo: () => markReadMutation.mutate({ ...unread, leaves: null }),
         }),
     })
   }
@@ -99,12 +97,9 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     }
     snoozeMutation.mutate(snoozed, {
       onSuccess: () =>
-        toast.success(`Snoozed until ${formatAbsolute(until)}`, {
+        toastWithUndo(`Snoozed until ${formatAbsolute(until)}`, {
           description: releaseLabel(release),
-          action: {
-            label: "Undo",
-            onClick: () => unsnoozeMutation.mutate({ ...snoozed, leaves: null }),
-          },
+          onUndo: () => unsnoozeMutation.mutate({ ...snoozed, leaves: null }),
         }),
     })
   }
@@ -126,15 +121,12 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
       { repositoryId: repository.id, enabled },
       {
         onSuccess: () =>
-          toast.success(`Notifications ${enabled ? "on" : "off"} for ${repository.full_name}`, {
+          toastWithUndo(`Notifications ${enabled ? "on" : "off"} for ${repository.full_name}`, {
             description: enabled
               ? "You'll be notified about new releases."
               : "New releases still show up in your inbox, without a notification.",
-            action: {
-              label: "Undo",
-              onClick: () =>
-                setNotifications.mutate({ repositoryId: repository.id, enabled: !enabled }),
-            },
+            onUndo: () =>
+              setNotifications.mutate({ repositoryId: repository.id, enabled: !enabled }),
           }),
       }
     )
@@ -143,10 +135,7 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
   function copyLink(release: Release) {
     copyToClipboard(release.html_url).then(
       () => toast.success("Link copied", { description: releaseLabel(release) }),
-      (error: unknown) =>
-        toast.error("Couldn't copy the link", {
-          description: error instanceof Error ? error.message : undefined,
-        })
+      (error: unknown) => toastError("Couldn't copy the link", error)
     )
   }
 

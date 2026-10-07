@@ -1,4 +1,4 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Hint } from "@/components/hint"
 import { useNow } from "@/hooks/use-now"
 import { formatAbsolute, formatAge, formatRelative } from "@/lib/time"
 
@@ -14,13 +14,10 @@ export function RelativeTime({ date, format = "long", className }: RelativeTimeP
   const label = format === "short" ? formatAge(date, now) : formatRelative(date, now)
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <time dateTime={date} className={className}>
-          {label}
-        </time>
-      </TooltipTrigger>
-      <TooltipContent>{formatAbsolute(date)}</TooltipContent>
-    </Tooltip>
+    <Hint label={formatAbsolute(date)}>
+      <time dateTime={date} className={className}>
+        {label}
+      </time>
+    </Hint>
   )
 }

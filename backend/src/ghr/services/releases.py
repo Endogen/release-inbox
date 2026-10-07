@@ -1,9 +1,13 @@
 """Read-side queries for releases: views, counts and per-repository history."""
 
+from datetime import datetime
+from typing import TypedDict
+
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
+from ghr.db import get_existing
 from ghr.domain import View
 from ghr.errors import NotFoundError
 from ghr.models import Release, Repository
@@ -31,9 +35,7 @@ class ReleaseQueries:
     ) -> ReleasePage:
         """Newest release of every repository in the view, newest first."""
         context = await load_view_context(self._session)
-        filters = [in_view(view, context)]
-        if (search_filter := matches_search(search)) is not None:
-            filters.append(search_filter)
+        filters = [in_view(view, context), matches_search(search)]
 
         ranked = (
             select(
@@ -54,8 +56,10 @@ class ReleaseQueries:
 
         total = await self._session.scalar(select(func.count()).select_from(ranked).where(latest))
         rows = await self._session.execute(
-            _select_with_repository(
-                is_hidden(context.prereleases).label("is_hidden"), ranked.c.group_size
+            _with_repository(
+                select(
+                    Release, is_hidden(context.prereleases).label("is_hidden"), ranked.c.group_size
+                )
             )
             .join(ranked, ranked.c.release_id == Release.id)
             .where(latest)
@@ -78,19 +82,17 @@ class ReleaseQueries:
             statement = (
                 select(func.count(func.distinct(Release.repository_id)))
                 .join(Repository)
-                .where(in_view(view, context))
+                .where(in_view(view, context), search_filter)
             )
-            if search_filter is not None:
-                statement = statement.where(search_filter)
             counts[view] = await self._session.scalar(statement) or 0
         return ViewCounts(**counts)
 
     async def get(self, release_id: int) -> ReleaseDetail:
         context = await load_view_context(self._session)
         row = await self._session.execute(
-            _select_with_repository(is_hidden(context.prereleases).label("is_hidden")).where(
-                Release.id == release_id
-            )
+            _with_repository(
+                select(Release, is_hidden(context.prereleases).label("is_hidden"))
+            ).where(Release.id == release_id)
         )
         result = row.one_or_none()
         if result is None:
@@ -117,11 +119,13 @@ class ReleaseQueries:
         ``+N older``."""
         await self._require_repository(repository_id)
         context = await load_view_context(self._session)
-        filters = [Release.repository_id == repository_id, in_view(View.INBOX, context)]
-        if (search_filter := matches_search(search)) is not None:
-            filters.append(search_filter)
+        filters = [
+            Release.repository_id == repository_id,
+            in_view(View.INBOX, context),
+            matches_search(search),
+        ]
         rows = await self._session.execute(
-            _select_with_repository()
+            _with_repository(select(Release))
             .where(*filters)
             .order_by(Release.published_at.desc(), Release.id.desc())
             .limit(MAX_UNREAD_RELEASES)
@@ -132,8 +136,7 @@ class ReleaseQueries:
         ]
 
     async def _require_repository(self, repository_id: int) -> None:
-        if await self._session.get(Repository, repository_id) is None:
-            raise NotFoundError("Repository", repository_id)
+        await get_existing(self._session, Repository, repository_id, "Repository")
 
 
 def release_ref(release: Release, hidden: bool) -> ReleaseRef:
@@ -147,15 +150,30 @@ def release_ref(release: Release, hidden: bool) -> ReleaseRef:
     )
 
 
-def _select_with_repository(*columns: object) -> Select[tuple[Release, ...]]:
-    return (
-        select(Release, *columns)  # type: ignore[call-overload]
-        .join(Release.repository)
-        .options(contains_eager(Release.repository))
-    )
+def _with_repository[*Ts](statement: Select[*Ts]) -> Select[*Ts]:
+    """Load each release's repository with the same query."""
+    return statement.join(Release.repository).options(contains_eager(Release.repository))
 
 
-def _release_fields(release: Release, hidden: bool) -> dict[str, object]:
+class _ReleaseFields(TypedDict):
+    """The fields of ``ReleaseOut``."""
+
+    id: int
+    tag_name: str
+    name: str | None
+    html_url: str
+    author_login: str | None
+    author_avatar_url: str | None
+    prerelease: bool
+    breaking: bool
+    published_at: datetime
+    read_at: datetime | None
+    snoozed_until: datetime | None
+    is_hidden: bool
+    repository: RepositoryOut
+
+
+def _release_fields(release: Release, hidden: bool) -> _ReleaseFields:
     return {
         "id": release.id,
         "tag_name": release.tag_name,

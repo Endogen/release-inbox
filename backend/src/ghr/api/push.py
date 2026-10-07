@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, status
 
 from ghr.api.deps import ContainerDep
+from ghr.errors import ConflictError
 from ghr.schemas import PushConfig, PushSubscriptionIn, PushSubscriptionRef
 
 router = APIRouter(prefix="/push", tags=["push notifications"])
@@ -16,9 +17,7 @@ async def get_push_config(container: ContainerDep) -> PushConfig:
 @router.post("/subscriptions", status_code=status.HTTP_204_NO_CONTENT)
 async def subscribe(payload: PushSubscriptionIn, container: ContainerDep) -> None:
     if not container.web_push.configured:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, "Push notifications are not configured on the server"
-        )
+        raise ConflictError("Push notifications are not configured on the server")
     await container.web_push.subscribe(
         str(payload.endpoint), payload.keys.p256dh, payload.keys.auth
     )

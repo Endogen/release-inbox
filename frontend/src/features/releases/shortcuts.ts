@@ -1,23 +1,7 @@
 import { VIEWS } from "@/lib/api/types"
+import { HOTKEYS } from "@/lib/hotkeys"
 
 import { VIEW_META } from "./view-meta"
-
-/** Keys of the inbox shortcuts (``KeyboardEvent.key``), shared by the handlers and the hints. */
-export const HOTKEYS = {
-  next: "j",
-  previous: "k",
-  markRead: "e",
-  snooze: "s",
-  markUnread: "u",
-  hide: "h",
-  notifications: "m",
-  open: "o",
-  copyLink: "c",
-  nextTab: "r",
-  search: "/",
-  close: "Escape",
-  help: "?",
-} as const
 
 const viewLabels = VIEWS.map((view) => VIEW_META[view].label)
 
@@ -40,8 +24,3 @@ export const SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; description: st
   { keys: [HOTKEYS.close], description: "Close the release" },
   { keys: [HOTKEYS.help], description: "Show keyboard shortcuts" },
 ]
-
-/** How a key is shown in hints. */
-export function keyLabel(key: string): string {
-  return key === "Escape" ? "Esc" : key
-}

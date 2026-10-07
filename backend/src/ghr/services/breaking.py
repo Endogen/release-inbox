@@ -3,7 +3,6 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Protocol
 
 # "Breaking changes" headings and mentions in any case, but not "no breaking changes".
 _BREAKING_CHANGES = re.compile(r"(?<!no )(?<!without )breaking[\s_-]+changes?", re.IGNORECASE)
@@ -37,34 +36,31 @@ def mentions_breaking_changes(body: str | None) -> bool:
     return bool(_BREAKING_CHANGES.search(body) or _BREAKING_MARKERS.search(body))
 
 
-def is_semantic_major(major: int) -> bool:
+def _is_semantic_major(major: int) -> bool:
     """``0.x`` releases make no compatibility promise; huge majors are calendar versions."""
     return 1 <= major <= _MAX_SEMANTIC_MAJOR
 
 
-class ClassifiableRelease(Protocol):
-    tag_name: str
-    body: str | None
-    breaking: bool
-
-
-def classify(releases_oldest_first: Iterable[ClassifiableRelease]) -> None:
-    """Set ``breaking`` on the releases of one repository, given in publication order.
+def breaking_flags(releases_oldest_first: Iterable[tuple[str, str | None]]) -> list[bool]:
+    """Whether each release of one repository is breaking, given its tag and notes in
+    publication order.
 
     A release is breaking if its notes say so, or if it is the first release of a new major
     version of its component. Comparing with the highest major seen so far means backports
     (2.0.0, then 1.9.1, then 2.0.1) don't count as new majors.
     """
     highest_major: dict[str, int] = {}
-    for release in releases_oldest_first:
-        version = parse_version(release.tag_name)
+    flags: list[bool] = []
+    for tag_name, body in releases_oldest_first:
+        version = parse_version(tag_name)
         new_major = False
         if version is not None:
             previous = highest_major.get(version.component)
             new_major = (
                 previous is not None
                 and version.major > previous
-                and is_semantic_major(version.major)
+                and _is_semantic_major(version.major)
             )
             highest_major[version.component] = max(previous or 0, version.major)
-        release.breaking = new_major or mentions_breaking_changes(release.body)
+        flags.append(new_major or mentions_breaking_changes(body))
+    return flags

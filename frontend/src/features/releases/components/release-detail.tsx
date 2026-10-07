@@ -1,56 +1,30 @@
 import {
   AlarmClockIcon,
-  AlarmClockOffIcon,
   ArrowLeftIcon,
   BellIcon,
   BellOffIcon,
-  CheckIcon,
   EyeOffIcon,
-  InboxIcon,
   LockIcon,
 } from "lucide-react"
-import { useEffect, useRef, type ReactNode } from "react"
+import { useEffect, useRef } from "react"
 
-import { RelativeTime } from "@/components/relative-time"
 import { RepoAvatar, UserAvatar } from "@/components/avatars"
+import { Hint } from "@/components/hint"
+import { RelativeTime } from "@/components/relative-time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Kbd } from "@/components/ui/kbd"
-import { Spinner } from "@/components/ui/spinner"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { useMediaQuery } from "@/hooks/use-media-query"
 import { useNow } from "@/hooks/use-now"
-import type { Release } from "@/lib/api/types"
+import type { Release, Repository } from "@/lib/api/types"
+import { HOTKEYS } from "@/lib/hotkeys"
 import { formatAbsolute } from "@/lib/time"
 
-import { useReleaseAssets } from "../api"
 import { releaseTitle } from "../release-title"
-import { HOTKEYS, keyLabel } from "../shortcuts"
-import { canSnooze, viewOf } from "../release-view"
+import { viewOf } from "../release-view"
+import { ReleaseActionBar, type PendingActions, type ReleaseActions } from "./release-action-bar"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
 import { ReleaseContent, type ContentTab } from "./release-content"
-import { ReleaseDownloads } from "./release-downloads"
-import { ReleaseMoreMenu } from "./release-more-menu"
 import { ReleaseVersionSelect } from "./release-version-select"
-import { SnoozeMenu } from "./snooze-menu"
 import { StarCount } from "./star-count"
-
-interface ReleaseDetailActions {
-  onToggleNotifications: () => void
-  onMarkRead: () => void
-  onMarkUnread: () => void
-  onHide: () => void
-  onUnsubscribe: () => void
-  onSnooze: (until: Date) => void
-  onUnsnooze: () => void
-  onCopyLink: () => void
-}
-
-/** Actions waiting for their undo window to pass. */
-interface PendingActions {
-  markRead: boolean
-  unsubscribe: boolean
-}
 
 interface ReleaseDetailProps {
   release: Release
@@ -62,7 +36,7 @@ interface ReleaseDetailProps {
   contentTab: ContentTab
   onContentTabChange: (tab: ContentTab) => void
   onSelectRelease: (releaseId: number) => void
-  actions: ReleaseDetailActions
+  actions: ReleaseActions & { onToggleNotifications: () => void }
   pending: PendingActions
   snoozeMenuOpen: boolean
   onSnoozeMenuOpenChange: (open: boolean) => void
@@ -95,19 +69,7 @@ export function ReleaseDetail({
   }, [focusOnOpen, release.repository.id])
 
   const { repository } = release
-  const stars = showStars ? repository.stargazers_count : null
-  const title = releaseTitle(release)
   const now = useNow()
-  const assets = useReleaseAssets(release.id).data ?? []
-  // The row stays one line: on narrow phones, secondary actions show only their icon. The
-  // download button, shown when there are files, takes about 3.75rem of it.
-  const extra = assets.length > 0 ? 3.75 : 0
-  const labels = {
-    unsubscribe: useMediaQuery(`(min-width: ${25.5 + extra}rem)`),
-    snooze: useMediaQuery(`(min-width: ${20.5 + extra}rem)`),
-    downloads: useMediaQuery("(min-width: 22rem)"),
-  }
-  const view = viewOf(release, now)
 
   return (
     <article className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in slide-in-from-bottom-1">
@@ -118,33 +80,7 @@ export function ReleaseDetail({
               <ArrowLeftIcon />
             </Button>
           )}
-          <RepoAvatar repository={repository} className="size-10" />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <a
-              href={repository.html_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-sm font-medium hover:underline"
-            >
-              <span className="truncate">{repository.full_name}</span>
-              {repository.private && (
-                <LockIcon
-                  aria-label="Private"
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                />
-              )}
-            </a>
-            {(repository.description || stars !== null) && (
-              <p
-                className="truncate text-xs text-muted-foreground"
-                title={repository.description ?? undefined}
-              >
-                {stars !== null && <StarCount count={stars} />}
-                {stars !== null && repository.description && " · "}
-                {repository.description}
-              </p>
-            )}
-          </div>
+          <RepositoryHeading repository={repository} showStars={showStars} />
           <NotificationsToggle
             muted={repository.notifications_muted_at !== null}
             onToggle={actions.onToggleNotifications}
@@ -157,22 +93,17 @@ export function ReleaseDetail({
             tabIndex={-1}
             className="text-2xl font-semibold tracking-tight text-balance break-words outline-none"
           >
-            {title}
+            {releaseTitle(release)}
           </h1>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-muted-foreground">
             <ReleaseVersionSelect release={release} onSelect={onSelectRelease} />
             {release.breaking && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <BreakingBadge />
-                </TooltipTrigger>
-                <TooltipContent>
-                  The notes mention breaking changes, or this is a new major version
-                </TooltipContent>
-              </Tooltip>
+              <Hint label="The notes mention breaking changes, or this is a new major version">
+                <BreakingBadge />
+              </Hint>
             )}
             {release.prerelease && <PrereleaseBadge />}
-            {view === "snoozed" && release.snoozed_until && (
+            {viewOf(release, now) === "snoozed" && release.snoozed_until && (
               <Badge variant="secondary">
                 <AlarmClockIcon data-icon="inline-start" />
                 Snoozed until {formatAbsolute(release.snoozed_until)}
@@ -206,77 +137,13 @@ export function ReleaseDetail({
           </div>
         </div>
 
-        {/* One row on every screen: the frequent actions, and a menu for the rest. */}
-        <div className="flex items-center gap-2">
-          {release.read_at === null ? (
-            <ActionButton hotkey={HOTKEYS.markRead} label="Mark this and older releases as read">
-              <Button size="sm" onClick={actions.onMarkRead} aria-busy={pending.markRead}>
-                {pending.markRead ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <CheckIcon data-icon="inline-start" />
-                )}
-                {pending.markRead ? "Marking as read…" : "Mark as read"}
-              </Button>
-            </ActionButton>
-          ) : (
-            <ActionButton hotkey={HOTKEYS.markUnread} label="Move back to the inbox">
-              <Button size="sm" variant="secondary" onClick={actions.onMarkUnread}>
-                <InboxIcon data-icon="inline-start" />
-                Mark as unread
-              </Button>
-            </ActionButton>
-          )}
-          {canSnooze(release, now) &&
-            (view === "snoozed" ? (
-              <ActionButton label="Bring it back to the inbox now">
-                <Button size="sm" variant="outline" onClick={actions.onUnsnooze}>
-                  <AlarmClockOffIcon data-icon="inline-start" />
-                  Unsnooze
-                </Button>
-              </ActionButton>
-            ) : (
-              <SnoozeMenu
-                open={snoozeMenuOpen}
-                onOpenChange={onSnoozeMenuOpenChange}
-                onSnooze={actions.onSnooze}
-                iconOnly={!labels.snooze}
-                renderTrigger={(trigger) => (
-                  <ActionButton hotkey={HOTKEYS.snooze} label="Put it aside until later">
-                    {trigger}
-                  </ActionButton>
-                )}
-              />
-            ))}
-          {!repository.unsubscribed_at && (
-            <ActionButton label="Stop watching this repository on GitHub">
-              <Button
-                size={labels.unsubscribe ? "sm" : "icon-sm"}
-                variant="outline"
-                onClick={actions.onUnsubscribe}
-                aria-busy={pending.unsubscribe}
-                aria-label={labels.unsubscribe ? undefined : "Unsubscribe"}
-              >
-                {pending.unsubscribe ? (
-                  <Spinner data-icon={labels.unsubscribe ? "inline-start" : undefined} />
-                ) : (
-                  <BellOffIcon data-icon={labels.unsubscribe ? "inline-start" : undefined} />
-                )}
-                {labels.unsubscribe && (pending.unsubscribe ? "Unsubscribing…" : "Unsubscribe")}
-              </Button>
-            </ActionButton>
-          )}
-          {assets.length > 0 && (
-            <ReleaseDownloads release={release} assets={assets} showCount={labels.downloads} />
-          )}
-          <div className="ml-auto">
-            <ReleaseMoreMenu
-              release={release}
-              onCopyLink={actions.onCopyLink}
-              onHide={actions.onHide}
-            />
-          </div>
-        </div>
+        <ReleaseActionBar
+          release={release}
+          actions={actions}
+          pending={pending}
+          snoozeMenuOpen={snoozeMenuOpen}
+          onSnoozeMenuOpenChange={onSnoozeMenuOpenChange}
+        />
       </header>
 
       <ReleaseContent
@@ -291,9 +158,47 @@ export function ReleaseDetail({
   )
 }
 
+function RepositoryHeading({
+  repository,
+  showStars,
+}: {
+  repository: Repository
+  showStars: boolean
+}) {
+  const stars = showStars ? repository.stargazers_count : null
+  return (
+    <>
+      <RepoAvatar repository={repository} className="size-10" />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <a
+          href={repository.html_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 text-sm font-medium hover:underline"
+        >
+          <span className="truncate">{repository.full_name}</span>
+          {repository.private && (
+            <LockIcon aria-label="Private" className="size-3.5 shrink-0 text-muted-foreground" />
+          )}
+        </a>
+        {(repository.description || stars !== null) && (
+          <p
+            className="truncate text-xs text-muted-foreground"
+            title={repository.description ?? undefined}
+          >
+            {stars !== null && <StarCount count={stars} />}
+            {stars !== null && repository.description && " · "}
+            {repository.description}
+          </p>
+        )}
+      </div>
+    </>
+  )
+}
+
 function NotificationsToggle({ muted, onToggle }: { muted: boolean; onToggle: () => void }) {
   return (
-    <ActionButton
+    <Hint
       hotkey={HOTKEYS.notifications}
       label={
         muted
@@ -310,26 +215,6 @@ function NotificationsToggle({ muted, onToggle }: { muted: boolean; onToggle: ()
       >
         {muted ? <BellOffIcon /> : <BellIcon />}
       </Button>
-    </ActionButton>
-  )
-}
-
-function ActionButton({
-  label,
-  hotkey,
-  children,
-}: {
-  label: string
-  hotkey?: string
-  children: ReactNode
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent>
-        {label}
-        {hotkey && <Kbd>{keyLabel(hotkey)}</Kbd>}
-      </TooltipContent>
-    </Tooltip>
+    </Hint>
   )
 }

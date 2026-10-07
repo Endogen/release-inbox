@@ -1,10 +1,10 @@
+import { cn } from "cn"
 import { RefreshCwIcon, TriangleAlertIcon } from "lucide-react"
 
+import { Hint } from "@/components/hint"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useNow } from "@/hooks/use-now"
 import { formatRelative } from "@/lib/time"
-import { cn } from "@/lib/utils"
 
 import { useSync } from "./api"
 
@@ -22,23 +22,20 @@ export function SyncButton() {
         : "Sync now"
 
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Sync now"
-          aria-busy={inProgress}
-          onClick={syncNow}
-        >
-          {failed ? (
-            <TriangleAlertIcon className="text-destructive" />
-          ) : (
-            <RefreshCwIcon className={cn(inProgress && "animate-spin")} />
-          )}
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-72">{label}</TooltipContent>
-    </Tooltip>
+    <Hint label={label} className="max-w-72">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Sync now"
+        aria-busy={inProgress}
+        onClick={syncNow}
+      >
+        {failed ? (
+          <TriangleAlertIcon className="text-destructive" />
+        ) : (
+          <RefreshCwIcon className={cn(inProgress && "animate-spin")} />
+        )}
+      </Button>
+    </Hint>
   )
 }

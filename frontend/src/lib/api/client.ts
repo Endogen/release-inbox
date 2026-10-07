@@ -6,11 +6,15 @@ export class ApiError extends Error {
     this.name = "ApiError"
     this.status = status
   }
-
-  get isUnauthorized(): boolean {
-    return this.status === 401
-  }
 }
+
+function failedWith(error: unknown, status: number): error is ApiError {
+  return error instanceof ApiError && error.status === status
+}
+
+export const isUnauthorized = (error: unknown) => failedWith(error, 401)
+export const isNotFound = (error: unknown) => failedWith(error, 404)
+export const isConflict = (error: unknown) => failedWith(error, 409)
 
 type QueryScalar = string | number | boolean
 /** Arrays repeat the parameter (``?id=1&id=2``); empty values are left out. */

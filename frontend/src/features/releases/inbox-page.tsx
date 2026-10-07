@@ -1,31 +1,28 @@
-import { lazy, Suspense, useMemo, useRef, useState } from "react"
+import { cn } from "cn"
+import { lazy, Suspense, useRef, useState } from "react"
 import { useDefaultLayout } from "react-resizable-panels"
 
-import { AppHeader } from "@/features/shell/app-header"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
+import { AppHeader } from "@/features/shell/app-header"
 import { SyncBanner } from "@/features/sync/sync-banner"
 import { useHasOpened } from "@/hooks/use-has-opened"
-import { useHotkeys } from "@/hooks/use-hotkeys"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useStableCallback } from "@/hooks/use-stable-callback"
-import { VIEWS, type Release, type ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
-import { cn } from "@/lib/utils"
+import type { Release, ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
+import { MEDIA } from "@/lib/breakpoints"
 
-import { useRelease, useReleaseList, useViewCounts } from "./api"
+import { useRelease } from "./api"
 import { CONTENT_TABS, type ContentTab } from "./components/release-content"
 import { ReleaseDetail } from "./components/release-detail"
 import { ReleaseList } from "./components/release-list"
 import { SearchBox } from "./components/search-box"
 import { ViewTabs } from "./components/view-tabs"
-import { useDeferredActions } from "./deferred-actions/context"
-import { hiddenRepositories } from "./deferred-actions/queue"
 import { DetailSkeleton, MissingRelease, NoSelection, PaneError } from "./inbox-states"
-import { viewOf } from "./release-view"
-import { HOTKEYS } from "./shortcuts"
+import { useInboxEntries } from "./use-inbox-entries"
+import { useInboxHotkeys } from "./use-inbox-hotkeys"
 import { useInboxRoute } from "./use-inbox-route"
 import { useReleaseActions } from "./use-release-actions"
-import { VIEW_META } from "./view-meta"
 
 const PANEL_IDS = ["list", "detail"]
 
@@ -49,7 +46,7 @@ const ShortcutsDialog = lazy(() =>
 export function InboxPage({ username }: { username: string }) {
   const route = useInboxRoute()
   const { view } = route
-  const isDesktop = useMediaQuery("(min-width: 1024px)")
+  const isDesktop = useMediaQuery(MEDIA.lg)
   const layout = useDefaultLayout({ id: "inbox-layout", panelIds: PANEL_IDS })
 
   const [contentTab, setContentTab] = useState<ContentTab>("notes")
@@ -63,28 +60,8 @@ export function InboxPage({ username }: { username: string }) {
   const settingsUsed = useHasOpened(settingsOpen)
   const shortcutsUsed = useHasOpened(shortcutsOpen)
 
-  const list = useReleaseList(view, route.search)
-  const counts = useViewCounts(route.search)
+  const { list, loaded, items, viewCounts } = useInboxEntries(view, route.search)
   const detail = useRelease(route.releaseId)
-  const { pending } = useDeferredActions()
-
-  // Offset pages can overlap when new releases arrive between loads; keep one entry each.
-  const loaded = useMemo(() => {
-    const byRepository = new Map<number, ReleaseListItemData>()
-    for (const item of list.data?.pages.flatMap((page) => page.items) ?? []) {
-      if (!byRepository.has(item.repository.id)) byRepository.set(item.repository.id, item)
-    }
-    return byRepository
-  }, [list.data])
-  const hidden = useMemo(() => hiddenRepositories(pending, view), [pending, view])
-  const items = useMemo(
-    () => [...loaded.values()].filter((item) => !hidden.has(item.repository.id)),
-    [loaded, hidden]
-  )
-  const viewCounts = counts.data && {
-    ...counts.data,
-    [view]: Math.max(0, counts.data[view] - (loaded.size - items.length)),
-  }
 
   // While another version loads, the previous one stays visible (placeholder data).
   const current = detail.data?.id === route.releaseId ? detail.data : undefined
@@ -138,32 +115,18 @@ export function InboxPage({ username }: { username: string }) {
     setContentTab(contentTabs[(index + 1) % contentTabs.length] ?? "notes")
   }
 
-  const viewHotkeys = Object.fromEntries(
-    VIEWS.map((name) => [VIEW_META[name].hotkey, () => route.setView(name)])
-  )
-
-  useHotkeys(
-    {
-      [HOTKEYS.next]: () => moveSelection(1),
-      [HOTKEYS.previous]: () => moveSelection(-1),
-      [HOTKEYS.markRead]: () => selected?.read_at === null && actions.markRead(selected),
-      [HOTKEYS.markUnread]: () => selected?.read_at && actions.markUnread(selected),
-      // Snoozed releases offer "Unsnooze" instead of the menu.
-      [HOTKEYS.snooze]: () =>
-        selected && viewOf(selected, Date.now()) === "inbox" && setSnoozeMenuFor(selected.id),
-      [HOTKEYS.hide]: () => selected && setHideTarget(selected),
-      [HOTKEYS.notifications]: () => selected && actions.toggleNotifications(selected),
-      [HOTKEYS.open]: () =>
-        selected && window.open(selected.html_url, "_blank", "noopener,noreferrer"),
-      [HOTKEYS.copyLink]: () => selected && actions.copyLink(selected),
-      [HOTKEYS.nextTab]: cycleContentTab,
-      ...viewHotkeys,
-      [HOTKEYS.search]: () => searchRef.current?.focus(),
-      [HOTKEYS.help]: () => setShortcutsOpen(true),
-      [HOTKEYS.close]: () => route.closeRelease(),
-    },
-    { repeatable: [HOTKEYS.next, HOTKEYS.previous] }
-  )
+  useInboxHotkeys({
+    selected,
+    actions,
+    onMove: moveSelection,
+    onSnooze: (release) => setSnoozeMenuFor(release.id),
+    onHide: setHideTarget,
+    onNextTab: cycleContentTab,
+    onView: route.setView,
+    onSearch: () => searchRef.current?.focus(),
+    onHelp: () => setShortcutsOpen(true),
+    onClose: route.closeRelease,
+  })
 
   const listPane = (
     <section aria-label="Releases" className="flex h-full min-h-0 flex-col">

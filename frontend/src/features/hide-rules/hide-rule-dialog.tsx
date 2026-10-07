@@ -1,8 +1,8 @@
 import { AsteriskIcon, SearchXIcon } from "lucide-react"
 import { useState, type FormEvent } from "react"
-import { toast } from "sonner"
 
 import { RepoAvatar } from "@/components/avatars"
+import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -14,7 +14,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group"
 import {
@@ -30,9 +29,11 @@ import { Spinner } from "@/components/ui/spinner"
 import { releaseTitle } from "@/features/releases/release-title"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
 import { useNow } from "@/hooks/use-now"
-import { ApiError } from "@/lib/api/client"
+import { isConflict } from "@/lib/api/client"
 import type { Release, ReleaseRef } from "@/lib/api/types"
+import { plural } from "@/lib/plural"
 import { formatAge } from "@/lib/time"
+import { toastWithUndo } from "@/lib/toasts"
 
 import { useCreateHideRule, useDeleteHideRule, useHideRulePreview } from "./api"
 import { suggestPattern } from "./suggest-pattern"
@@ -70,10 +71,9 @@ function HideRuleForm({ release, onDone }: { release: Release; onDone: () => voi
   const createRule = useCreateHideRule()
   const deleteRule = useDeleteHideRule()
 
-  const error =
-    createRule.error instanceof ApiError && createRule.error.status === 409
-      ? "You already have a rule with this pattern."
-      : (createRule.error?.message ?? (preview.isError ? preview.error.message : undefined))
+  const error = isConflict(createRule.error)
+    ? "You already have a rule with this pattern."
+    : (createRule.error?.message ?? (preview.isError ? preview.error.message : undefined))
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -83,9 +83,9 @@ function HideRuleForm({ release, onDone }: { release: Release; onDone: () => voi
       {
         onSuccess: (rule) => {
           onDone()
-          toast.success(`Hiding "${rule.pattern}"`, {
-            description: `${rule.match_count} ${rule.match_count === 1 ? "release" : "releases"} from ${repository.full_name} hidden.`,
-            action: { label: "Undo", onClick: () => deleteRule.mutate(rule.id) },
+          toastWithUndo(`Hiding "${rule.pattern}"`, {
+            description: `${plural(rule.match_count, "release")} from ${repository.full_name} hidden.`,
+            onUndo: () => deleteRule.mutate(rule.id),
           })
         },
       }
@@ -195,15 +195,12 @@ function MatchingReleases({
             ))}
           </ItemGroup>
         ) : (
-          <Empty className="py-6">
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <SearchXIcon />
-              </EmptyMedia>
-              <EmptyTitle>No releases match yet</EmptyTitle>
-              <EmptyDescription>Future releases that match will be hidden.</EmptyDescription>
-            </EmptyHeader>
-          </Empty>
+          <EmptyState
+            icon={SearchXIcon}
+            title="No releases match yet"
+            description="Future releases that match will be hidden."
+            className="py-6"
+          />
         )}
       </div>
     </section>

@@ -20,6 +20,10 @@ class Event:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+#: Lists, counts or details of releases changed; clients refetch them.
+RELEASES_CHANGED = Event("releases-changed")
+
+
 class EventBroker:
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue[Event]] = set()

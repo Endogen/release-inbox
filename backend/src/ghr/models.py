@@ -1,6 +1,7 @@
 """ORM models."""
 
 from datetime import datetime
+from typing import TypedDict
 
 from sqlalchemy import (
     JSON,
@@ -18,6 +19,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ghr.db import Base, UtcDateTime, utcnow
 from ghr.domain import PrereleaseMode
+
+
+class StoredAsset(TypedDict):
+    """A file attached to a release, as kept in ``Release.assets``.
+
+    Separate from the API schema, so changing the API can't change what is stored.
+    """
+
+    id: int
+    name: str
+    size: int
+    download_count: int
+    url: str
+    content_type: str | None
 
 
 class Repository(Base):
@@ -66,7 +81,7 @@ class Release(Base):
     #: ETag of the last fetch, so refreshes are conditional requests.
     etag: Mapped[str | None] = mapped_column(String(255))
     #: Attached files (``ghr.services.assets``); ``None`` until they have been fetched.
-    assets: Mapped[list[dict[str, object]] | None] = mapped_column(JSON)
+    assets: Mapped[list[StoredAsset] | None] = mapped_column(JSON)
 
     repository: Mapped[Repository] = relationship()
 

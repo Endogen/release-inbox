@@ -5,25 +5,24 @@ fetched once and then again when its count is a day old. Conditional requests ke
 repositories from counting against the rate limit.
 """
 
-import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 
-import httpx
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ghr.concurrency import gather_limited
 from ghr.db import utcnow
-from ghr.events import Event, EventBroker
+from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.github.client import GitHubClient, GitHubError, NotModified, RepositoryStars
 from ghr.models import Repository
 
 logger = logging.getLogger(__name__)
 
 #: How old a star count may get before it is fetched again.
-STAR_COUNT_MAX_AGE = timedelta(days=1)
+_MAX_AGE = timedelta(days=1)
 _FETCH_CONCURRENCY = 4
 
 type _Fetched = RepositoryStars | NotModified | None
@@ -42,20 +41,17 @@ class StarCounter:
         session_factory: async_sessionmaker[AsyncSession],
         github: GitHubClient,
         broker: EventBroker,
-        *,
-        max_age: timedelta = STAR_COUNT_MAX_AGE,
     ) -> None:
         self._session_factory = session_factory
         self._github = github
         self._broker = broker
-        self._max_age = max_age
 
     async def refresh_due(self) -> StarRefreshResult:
         """Fetch the star counts that are missing or older than the maximum age.
 
         Counts fetched before a failure are kept; the rest are retried on the next refresh.
         """
-        cutoff = utcnow() - self._max_age
+        cutoff = utcnow() - _MAX_AGE
         async with self._session_factory() as session:
             due = (
                 await session.execute(
@@ -75,30 +71,23 @@ class StarCounter:
         except GitHubError as error:
             logger.warning("Fetching star counts failed: %s", error)
             retry_after = error.retry_after_seconds
-        except httpx.HTTPError as error:
-            logger.warning("Fetching star counts failed: %s", error)
 
         updated = await self._store(fetched)
         if updated:
-            self._broker.publish(Event("releases-changed"))
+            self._broker.publish(RELEASES_CHANGED)
         return StarRefreshResult(updated, retry_after_seconds=retry_after)
 
     async def _fetch_all(
         self, due: Sequence[tuple[int, str | None]], *, into: dict[int, _Fetched]
     ) -> None:
-        semaphore = asyncio.Semaphore(_FETCH_CONCURRENCY)
-
+        # Results go into ``into`` as they arrive, so they survive a failure of another fetch.
         async def fetch(repository_id: int, etag: str | None) -> None:
-            async with semaphore:
-                into[repository_id] = await self._fetch(repository_id, etag)
+            into[repository_id] = await self._fetch(repository_id, etag)
 
-        try:
-            async with asyncio.TaskGroup() as group:
-                for repository_id, etag in due:
-                    group.create_task(fetch(repository_id, etag))
-        except ExceptionGroup as errors:
-            # Report the first failure; the rest is retried on the next refresh.
-            raise errors.exceptions[0] from errors
+        await gather_limited(
+            (fetch(repository_id, etag) for repository_id, etag in due),
+            limit=_FETCH_CONCURRENCY,
+        )
 
     async def _fetch(self, repository_id: int, etag: str | None) -> _Fetched:
         try:

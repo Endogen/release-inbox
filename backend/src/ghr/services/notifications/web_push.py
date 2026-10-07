@@ -1,16 +1,16 @@
 """Web Push (VAPID) to the browsers that subscribed in the app."""
 
-import asyncio
 import json
 import logging
 from enum import Enum, auto
 
 import aiohttp
-from py_vapid import Vapid, Vapid01
+from py_vapid import Vapid
 from pywebpush import WebPushException, webpush_async
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ghr.concurrency import gather_limited
 from ghr.models import PushSubscription
 from ghr.services.notifications.message import Notification
 
@@ -41,7 +41,7 @@ class WebPushChannel:
         subject: str,
     ) -> None:
         self._session_factory = session_factory
-        self._vapid: Vapid01 | None = Vapid.from_string(private_key) if private_key else None
+        self._vapid: Vapid | None = Vapid.from_string(private_key) if private_key else None
         self._subject = subject
 
     @property
@@ -81,13 +81,9 @@ class WebPushChannel:
                 "tag": notification.tag,
             }
         )
-        semaphore = asyncio.Semaphore(_CONCURRENCY)
-
-        async def deliver(subscription: PushSubscription) -> _Delivery:
-            async with semaphore:
-                return await self._deliver(subscription, payload)
-
-        results = await asyncio.gather(*(deliver(item) for item in subscriptions))
+        results = await gather_limited(
+            (self._deliver(item, payload) for item in subscriptions), limit=_CONCURRENCY
+        )
         expired = [
             item.id
             for item, result in zip(subscriptions, results, strict=True)

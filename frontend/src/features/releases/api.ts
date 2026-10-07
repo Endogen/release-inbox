@@ -1,5 +1,6 @@
 import {
   keepPreviousData,
+  partialMatchKey,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -37,7 +38,9 @@ export function useReleaseList(view: View, search: string) {
     },
     // Keep the list while the search changes, but don't show another view's entries.
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[2] === view ? previous : undefined,
+      previousQuery && partialMatchKey(previousQuery.queryKey, releaseKeys.viewLists(view))
+        ? previous
+        : undefined,
   })
 }
 

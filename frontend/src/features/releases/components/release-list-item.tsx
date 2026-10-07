@@ -1,15 +1,15 @@
+import { cn } from "cn"
 import { AlarmClockIcon, BellOffIcon, CheckIcon, LockIcon } from "lucide-react"
 import { memo, type Ref } from "react"
 
-import { RelativeTime } from "@/components/relative-time"
 import { RepoAvatar } from "@/components/avatars"
+import { Hint } from "@/components/hint"
+import { RelativeTime } from "@/components/relative-time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useRowGestures, type SwipeDirection } from "@/hooks/use-row-gestures"
 import type { ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { formatAbsolute } from "@/lib/time"
-import { cn } from "@/lib/utils"
 
 import { releaseTitle } from "../release-title"
 import { BreakingBadge, PrereleaseBadge } from "./release-badges"
@@ -119,20 +119,17 @@ export const ReleaseListItem = memo(function ReleaseListItem({
         {onMarkRead && (
           // Only for mice and trackpads: on touch screens there is no hover, and an invisible
           // button over the timestamp would catch taps meant to open the release.
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Mark as read"
-                onClick={() => onMarkRead(release)}
-                className="absolute top-2 right-2 hidden opacity-0 transition-opacity pointer-fine:inline-flex pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100"
-              >
-                <CheckIcon />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Mark as read</TooltipContent>
-          </Tooltip>
+          <Hint label="Mark as read">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Mark as read"
+              onClick={() => onMarkRead(release)}
+              className="absolute top-2 right-2 hidden opacity-0 transition-opacity pointer-fine:inline-flex pointer-fine:group-hover/row:opacity-100 pointer-fine:focus-visible:opacity-100"
+            >
+              <CheckIcon />
+            </Button>
+          </Hint>
         )}
       </div>
     </li>

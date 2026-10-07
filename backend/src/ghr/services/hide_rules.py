@@ -1,12 +1,13 @@
 """Hide rules: per-repository glob patterns matched against release names and tags."""
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, SQLColumnExpression, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import contains_eager
 
-from ghr.errors import ConflictError, NotFoundError
-from ghr.events import Event, EventBroker
+from ghr.db import get_existing
+from ghr.errors import ConflictError
+from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.models import HideRule, Release, Repository
 from ghr.schemas import HideRuleOut, HideRulePreview, RepositoryOut
 from ghr.services.filters import is_hidden, matches_pattern
@@ -17,7 +18,7 @@ PREVIEW_LIMIT = 10
 
 
 def _match_count(
-    repository_id: ColumnElement[int] | int, pattern: ColumnElement[str] | str
+    repository_id: SQLColumnExpression[int] | int, pattern: SQLColumnExpression[str] | str
 ) -> ColumnElement[int]:
     """Number of releases of the repository that the pattern matches."""
     return (
@@ -51,17 +52,15 @@ class HideRuleService:
             await self._session.rollback()
             raise ConflictError(f"A rule for {pattern!r} already exists") from error
 
-        self._broker.publish(Event("releases-changed"))
+        self._broker.publish(RELEASES_CHANGED)
         count = await self._session.scalar(select(_match_count(repository_id, pattern)))
         return _to_out(rule, count or 0)
 
     async def delete(self, rule_id: int) -> None:
-        rule = await self._session.get(HideRule, rule_id)
-        if rule is None:
-            raise NotFoundError("Hide rule", rule_id)
+        rule = await get_existing(self._session, HideRule, rule_id, "Hide rule")
         await self._session.delete(rule)
         await self._session.commit()
-        self._broker.publish(Event("releases-changed"))
+        self._broker.publish(RELEASES_CHANGED)
 
     async def preview(self, repository_id: int, pattern: str) -> HideRulePreview:
         """Releases of the repository a rule with ``pattern`` would hide."""
@@ -78,10 +77,7 @@ class HideRuleService:
         return HideRulePreview(total=total or 0, matches=matches)
 
     async def _require_repository(self, repository_id: int) -> Repository:
-        repository = await self._session.get(Repository, repository_id)
-        if repository is None:
-            raise NotFoundError("Repository", repository_id)
-        return repository
+        return await get_existing(self._session, Repository, repository_id, "Repository")
 
 
 def _to_out(rule: HideRule, match_count: int) -> HideRuleOut:

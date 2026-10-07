@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.db import utcnow
 from ghr.domain import PrereleaseMode
-from ghr.events import Event, EventBroker
+from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.models import Preferences
 from ghr.schemas import PreferenceSettings
 from ghr.services.filters import ViewContext
@@ -41,5 +41,5 @@ class PreferencesService:
         await self._session.commit()
         if hidden_before != (preferences.prereleases is PrereleaseMode.HIDE):
             # Pre-releases moved between the Hidden view and the others.
-            self._broker.publish(Event("releases-changed"))
+            self._broker.publish(RELEASES_CHANGED)
         return PreferenceSettings.model_validate(preferences)

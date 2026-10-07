@@ -1,7 +1,7 @@
 import { SearchXIcon } from "lucide-react"
 import { useEffect, useRef } from "react"
 
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
+import { EmptyState } from "@/components/empty-state"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
@@ -124,27 +124,12 @@ function ReleaseListSkeleton() {
 }
 
 function ReleaseListEmpty({ view, search }: { view: View; search: string }) {
-  const {
-    icon: Icon,
-    title,
-    description,
-  } = search
+  const empty = search
     ? {
         icon: SearchXIcon,
         title: "No matches",
         description: `Nothing in this view matches "${search}".`,
       }
     : VIEW_META[view].empty
-
-  return (
-    <Empty className="flex-1">
-      <EmptyHeader>
-        <EmptyMedia variant="icon">
-          <Icon />
-        </EmptyMedia>
-        <EmptyTitle>{title}</EmptyTitle>
-        <EmptyDescription>{description}</EmptyDescription>
-      </EmptyHeader>
-    </Empty>
-  )
+  return <EmptyState {...empty} className="flex-1" />
 }

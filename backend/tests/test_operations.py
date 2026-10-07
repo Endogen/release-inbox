@@ -65,9 +65,9 @@ def scheduler(
 ) -> tuple[SyncScheduler, FakeSync]:
     sync = FakeSync(result, refresh)
     instance = SyncScheduler(
-        sync,  # type: ignore[arg-type]
-        FakeSnoozes(),  # type: ignore[arg-type]
-        FakeStars(stars or StarRefreshResult(0)),  # type: ignore[arg-type]
+        sync,  # pyright: ignore[reportArgumentType]
+        FakeSnoozes(),  # pyright: ignore[reportArgumentType]
+        FakeStars(stars or StarRefreshResult(0)),  # pyright: ignore[reportArgumentType]
         min_interval_seconds=60,
         refresh_interval_seconds=1800,
         refresh_window=timedelta(days=14),
@@ -151,7 +151,7 @@ class TestScheduler:
         async def broken() -> SyncResult:
             raise RuntimeError("boom")
 
-        sync.sync = broken  # type: ignore[method-assign]
+        sync.sync = broken
 
         assert await instance.run_once() == 60
 

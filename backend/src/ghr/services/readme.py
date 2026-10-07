@@ -9,7 +9,7 @@ from datetime import timedelta
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ghr.db import utcnow
+from ghr.db import get_existing, utcnow
 from ghr.errors import NotFoundError
 from ghr.github.client import NOT_MODIFIED, GitHubClient
 from ghr.models import Readme, Repository
@@ -23,9 +23,7 @@ class ReadmeService:
         self._max_age = max_age
 
     async def get(self, repository_id: int) -> ReadmeOut:
-        repository = await self._session.get(Repository, repository_id)
-        if repository is None:
-            raise NotFoundError("Repository", repository_id)
+        repository = await get_existing(self._session, Repository, repository_id, "Repository")
 
         cached = await self._session.get(Readme, repository_id)
         if cached is not None and utcnow() - cached.fetched_at < self._max_age:

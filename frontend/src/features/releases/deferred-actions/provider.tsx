@@ -2,8 +2,10 @@ import { useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState, type ReactNode } from "react"
 import { toast } from "sonner"
 
-import { releaseKeys } from "../query-keys"
 import { api } from "@/lib/api/client"
+import { toastError } from "@/lib/toasts"
+
+import { releaseKeys } from "../query-keys"
 
 import { DeferredActionsContext } from "./context"
 import { DeferredActionQueue } from "./queue"
@@ -33,10 +35,7 @@ export function DeferredActionsProvider({ children }: { children: ReactNode }) {
             onDismiss: () => void queue.commit(action.id),
           }),
         onSettled: (action) => toast.dismiss(action.id),
-        onError: (action, error) =>
-          toast.error(action.errorMessage, {
-            description: error instanceof Error ? error.message : undefined,
-          }),
+        onError: (action, error) => toastError(action.errorMessage, error),
       })
   )
 

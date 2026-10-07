@@ -121,7 +121,7 @@ class SnoozeRequest(BaseModel):
         return value
 
 
-def normalize_pattern(value: str) -> str:
+def _normalize_pattern(value: str) -> str:
     """Hide-rule patterns ignore surrounding whitespace and can't be blank."""
     stripped = value.strip()
     if not stripped:
@@ -129,7 +129,7 @@ def normalize_pattern(value: str) -> str:
     return stripped
 
 
-HidePattern = Annotated[str, Field(max_length=255), AfterValidator(normalize_pattern)]
+HidePattern = Annotated[str, Field(max_length=255), AfterValidator(_normalize_pattern)]
 
 
 class HideRuleCreate(BaseModel):
@@ -162,7 +162,7 @@ class SyncStatus(Schema):
     last_error: str | None
     in_progress: bool
     #: GitHub asked not to be contacted before this time (rate limit); syncs wait for it.
-    rate_limited_until: datetime | None = None
+    rate_limited_until: datetime | None
 
 
 class Credentials(BaseModel):

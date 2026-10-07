@@ -12,9 +12,10 @@ from httpx import AsyncClient, Response
 
 from ghr.config import Settings
 from ghr.container import Container
-from ghr.errors import InvalidRequestError
-from ghr.services.summaries import ClaudeSummarizer, ReleaseNotes, SummaryError
-from tests.conftest import migrate
+from ghr.errors import InvalidRequestError, SummaryError
+from ghr.services.claude import ClaudeSummarizer
+from ghr.services.summaries import ReleaseNotes
+from tests.conftest import running_container
 from tests.github_fixtures import FakeRelease, mock_github
 
 RELEASE = FakeRelease(1, 10, "acme/app", "v1.0.0", "2026-10-01T10:00:00Z", body="Added a thing")
@@ -44,10 +45,8 @@ def summarizer(request: pytest.FixtureRequest) -> FakeSummarizer | None:
 async def container(
     settings: Settings, summarizer: FakeSummarizer | None
 ) -> AsyncIterator[Container]:
-    await migrate(settings)
-    container = Container.build(settings, summarizer=summarizer)
-    yield container
-    await container.aclose()
+    async with running_container(settings, summarizer=summarizer) as container:
+        yield container
 
 
 async def test_summaries_are_cached_until_the_notes_change(
@@ -109,7 +108,7 @@ class StubMessages:
 
 def stub_claude(summarizer: ClaudeSummarizer, response: Any) -> StubMessages:
     messages = StubMessages(response)
-    summarizer._client = SimpleNamespace(beta=SimpleNamespace(messages=messages))  # type: ignore[assignment]
+    summarizer._client = SimpleNamespace(beta=SimpleNamespace(messages=messages))  # pyright: ignore[reportAttributeAccessIssue]
     return messages
 
 

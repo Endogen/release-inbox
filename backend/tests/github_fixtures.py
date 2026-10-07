@@ -6,6 +6,7 @@ from typing import Any
 import respx
 from httpx import Response
 
+from ghr.container import Container
 from tests.conftest import GITHUB_API
 
 
@@ -132,3 +133,11 @@ def mock_release(
     return router.get(release.api_url).mock(
         return_value=Response(200, json=release.release(), headers={"ETag": etag})
     )
+
+
+async def import_releases(
+    container: Container, router: respx.MockRouter, releases: list[FakeRelease]
+) -> None:
+    """Serve ``releases`` as notifications and import them."""
+    mock_github(router, releases)
+    assert (await container.sync.sync()).error is None

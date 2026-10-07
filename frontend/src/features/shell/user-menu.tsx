@@ -8,6 +8,7 @@ import {
 } from "lucide-react"
 
 import { UserAvatar } from "@/components/avatars"
+import { MenuKeyHint } from "@/components/key-hint"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -18,12 +19,12 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { useLogout } from "@/features/auth/api"
 import { isTheme } from "@/features/theme/context"
 import { useTheme } from "@/features/theme/use-theme"
+import { HOTKEYS } from "@/lib/hotkeys"
 
 interface UserMenuProps {
   username: string
@@ -52,7 +53,7 @@ export function UserMenu({ username, onOpenSettings, onOpenShortcuts }: UserMenu
           <DropdownMenuItem onSelect={onOpenShortcuts} className="pointer-coarse:hidden">
             <KeyboardIcon />
             Keyboard shortcuts
-            <DropdownMenuShortcut>?</DropdownMenuShortcut>
+            <MenuKeyHint hotkey={HOTKEYS.help} />
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

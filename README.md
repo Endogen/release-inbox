@@ -162,7 +162,7 @@ Prerequisites: Python 3.12+ with [uv](https://docs.astral.sh/uv/), Node.js 22+.
 Checks (also run by GitHub Actions on every push):
 
 ```bash
-cd backend && uv run pytest && uv run ruff check . && uv run ruff format --check .
+cd backend && uv run pytest && uv run ruff check . && uv run ruff format --check . && uv run pyright && uv run deptry src
 cd frontend && npm test && npm run typecheck && npm run lint && npm run format:check && npm run build
 ```
 

@@ -6,25 +6,18 @@ import {
   SparklesIcon,
 } from "lucide-react"
 
+import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
 import { LazyMarkdown, MarkdownSkeleton } from "@/components/lazy-markdown"
 import { RelativeTime } from "@/components/relative-time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { MAX_SUMMARIZED_RELEASES } from "@/features/summaries/api"
 import { SummaryPanel } from "@/features/summaries/summary-panel"
-import { ApiError } from "@/lib/api/client"
+import { isNotFound } from "@/lib/api/client"
 import type { Release, ReleaseDetail } from "@/lib/api/types"
 import { fileBaseUrls, repositoryBaseUrls } from "@/lib/markdown-urls"
 
@@ -110,15 +103,11 @@ function ReleaseNotes({ release, body }: { release: Release; body: string | null
   if (body === undefined) return <MarkdownSkeleton />
   if (!body?.trim()) {
     return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <FileTextIcon />
-          </EmptyMedia>
-          <EmptyTitle>No release notes</EmptyTitle>
-          <EmptyDescription>This release was published without a description.</EmptyDescription>
-        </EmptyHeader>
-      </Empty>
+      <EmptyState
+        icon={FileTextIcon}
+        title="No release notes"
+        description="This release was published without a description."
+      />
     )
   }
   return (
@@ -191,26 +180,20 @@ function RepositoryReadme({ release }: { release: Release }) {
 
   if (readme.isPending) return <MarkdownSkeleton />
   if (readme.isError) {
-    const missing = readme.error instanceof ApiError && readme.error.status === 404
-    if (!missing) return <LoadError onRetry={() => void readme.refetch()} />
+    if (!isNotFound(readme.error)) return <LoadError onRetry={() => void readme.refetch()} />
     return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <BookOpenIcon />
-          </EmptyMedia>
-          <EmptyTitle>No README</EmptyTitle>
-          <EmptyDescription>This repository doesn't have a README.</EmptyDescription>
-        </EmptyHeader>
-        <EmptyContent>
-          <Button variant="outline" size="sm" asChild>
-            <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
-              Open repository
-              <ExternalLinkIcon data-icon="inline-end" />
-            </a>
-          </Button>
-        </EmptyContent>
-      </Empty>
+      <EmptyState
+        icon={BookOpenIcon}
+        title="No README"
+        description="This repository doesn't have a README."
+      >
+        <Button variant="outline" size="sm" asChild>
+          <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
+            Open repository
+            <ExternalLinkIcon data-icon="inline-end" />
+          </a>
+        </Button>
+      </EmptyState>
     )
   }
   return <LazyMarkdown content={readme.data.content} baseUrls={fileBaseUrls(readme.data)} />

@@ -7,8 +7,9 @@ import {
   ShieldCheckIcon,
   type LucideIcon,
 } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, type ComponentProps } from "react"
 
+import { Hint } from "@/components/hint"
 import { Button } from "@/components/ui/button"
 import {
   Drawer,
@@ -27,9 +28,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import type { Release, ReleaseAsset } from "@/lib/api/types"
+import { MEDIA } from "@/lib/breakpoints"
 import { formatFileSize } from "@/lib/file-size"
 
 import {
@@ -107,7 +108,7 @@ export function ReleaseDownloads({
   showCount?: boolean
 }) {
   const sections = useDownloadSections(release, assets)
-  const phone = !useMediaQuery("(min-width: 40rem)")
+  const phone = !useMediaQuery(MEDIA.sm)
   const label = `Download files (${assets.length})`
   const trigger = (
     <Button variant="outline" size={showCount ? "sm" : "icon-sm"} aria-label={label}>
@@ -139,12 +140,9 @@ export function ReleaseDownloads({
 
   return (
     <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
+      <Hint label={label}>
+        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      </Hint>
       <DropdownMenuContent
         align="start"
         className="max-h-96 w-96 max-w-[calc(100vw-2rem)] overflow-y-auto"
@@ -167,15 +165,9 @@ function MenuSection({ title, entries }: { title: string; entries: DownloadEntry
   return (
     <DropdownMenuGroup>
       <DropdownMenuLabel>{title}</DropdownMenuLabel>
-      {entries.map(({ key, label, detail, url, icon: Icon }) => (
-        <DropdownMenuItem key={key} asChild>
-          <a href={url} download>
-            <Icon />
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate font-mono text-xs">{label}</span>
-              {detail && <span className="text-xs text-muted-foreground">{detail}</span>}
-            </span>
-          </a>
+      {entries.map((entry) => (
+        <DropdownMenuItem key={entry.key} asChild>
+          <DownloadLink entry={entry} />
         </DropdownMenuItem>
       ))}
     </DropdownMenuGroup>
@@ -195,26 +187,32 @@ function DrawerSection({
     <section className="flex flex-col gap-1">
       <h3 className="px-2 text-xs font-medium text-muted-foreground">{title}</h3>
       <ul className="flex flex-col">
-        {entries.map(({ key, label, detail, url, icon: Icon }) => (
-          <li key={key}>
+        {entries.map((entry) => (
+          <li key={entry.key}>
             <Button
               asChild
               variant={highlight ? "secondary" : "ghost"}
               className="h-auto w-full justify-start gap-3 py-2.5"
             >
-              <a href={url} download>
-                <Icon data-icon="inline-start" />
-                <span className="flex min-w-0 flex-col text-left">
-                  <span className="truncate font-mono text-xs">{label}</span>
-                  {detail && (
-                    <span className="text-xs font-normal text-muted-foreground">{detail}</span>
-                  )}
-                </span>
-              </a>
+              <DownloadLink entry={entry} />
             </Button>
           </li>
         ))}
       </ul>
     </section>
+  )
+}
+
+/** A file's name and details, linking to it; styled by the menu item or button around it. */
+function DownloadLink({ entry, ...props }: { entry: DownloadEntry } & ComponentProps<"a">) {
+  const { label, detail, url, icon: Icon } = entry
+  return (
+    <a href={url} download {...props}>
+      <Icon data-icon="inline-start" />
+      <span className="flex min-w-0 flex-col text-left">
+        <span className="truncate font-mono text-xs">{label}</span>
+        {detail && <span className="text-xs font-normal text-muted-foreground">{detail}</span>}
+      </span>
+    </a>
   )
 }

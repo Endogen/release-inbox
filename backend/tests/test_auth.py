@@ -1,6 +1,7 @@
 """Sign-in, sessions and the request-level protections."""
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import AsyncExitStack
 from pathlib import Path
 
 import pytest
@@ -8,9 +9,15 @@ from httpx import AsyncClient
 from pydantic import SecretStr
 
 from ghr.config import Settings
-from ghr.container import Container
 from ghr.security import LoginThrottle, hash_password, is_same_origin_request
-from tests.conftest import PASSWORD, USERNAME, build_client, make_settings, migrate, sign_in
+from tests.conftest import (
+    PASSWORD,
+    USERNAME,
+    build_client,
+    make_settings,
+    running_container,
+    sign_in,
+)
 
 type ClientFactory = Callable[[Settings], Awaitable[AsyncClient]]
 
@@ -18,20 +25,13 @@ type ClientFactory = Callable[[Settings], Awaitable[AsyncClient]]
 @pytest.fixture
 async def client_for(tmp_path: Path) -> AsyncIterator[ClientFactory]:
     """Clients for apps with custom settings; all share the test database."""
-    containers: list[Container] = []
-    clients: list[AsyncClient] = []
+    async with AsyncExitStack() as stack:
 
-    async def create(settings: Settings) -> AsyncClient:
-        await migrate(settings)
-        containers.append(container := Container.build(settings))
-        clients.append(client := build_client(settings, container))
-        return client
+        async def create(settings: Settings) -> AsyncClient:
+            container = await stack.enter_async_context(running_container(settings))
+            return await stack.enter_async_context(build_client(settings, container))
 
-    yield create
-    for client in clients:
-        await client.aclose()
-    for container in containers:
-        await container.aclose()
+        yield create
 
 
 class TestSession:

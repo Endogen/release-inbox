@@ -10,6 +10,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+#: How long running tasks may take to finish on shutdown before they are cancelled.
+_GRACE_PERIOD_SECONDS = 10.0
+
 
 class TaskSupervisor:
     def __init__(self) -> None:
@@ -25,11 +28,11 @@ class TaskSupervisor:
         while self._tasks:
             await asyncio.gather(*self._tasks)
 
-    async def aclose(self, *, grace_period: float = 10.0) -> None:
-        """Give running tasks ``grace_period`` seconds to finish, then cancel them."""
+    async def aclose(self) -> None:
+        """Give running tasks a grace period to finish, then cancel them."""
         if not self._tasks:
             return
-        _, pending = await asyncio.wait(self._tasks, timeout=grace_period)
+        _, pending = await asyncio.wait(self._tasks, timeout=_GRACE_PERIOD_SECONDS)
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)

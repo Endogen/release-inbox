@@ -2,10 +2,11 @@ import { SettingsIcon } from "lucide-react"
 import type { ReactNode } from "react"
 
 import { BrandMark } from "@/components/brand-mark"
+import { Hint } from "@/components/hint"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { UserMenu } from "./user-menu"
 import { SyncButton } from "@/features/sync/sync-button"
+
+import { UserMenu } from "./user-menu"
 
 interface AppHeaderProps {
   username: string
@@ -24,21 +25,18 @@ export function AppHeader({ username, search, onOpenSettings, onOpenShortcuts }:
       <div className="mx-auto w-full max-w-xl">{search}</div>
       <div className="flex items-center gap-1">
         <SyncButton />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            {/* On phones the account menu offers Settings, leaving room for the search. */}
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Settings"
-              onClick={onOpenSettings}
-              className="hidden sm:inline-flex"
-            >
-              <SettingsIcon />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Settings</TooltipContent>
-        </Tooltip>
+        {/* On phones the account menu offers Settings, leaving room for the search. */}
+        <Hint label="Settings">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Settings"
+            onClick={onOpenSettings}
+            className="hidden sm:inline-flex"
+          >
+            <SettingsIcon />
+          </Button>
+        </Hint>
         <UserMenu
           username={username}
           onOpenSettings={onOpenSettings}

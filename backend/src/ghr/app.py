@@ -12,9 +12,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from ghr.api import build_api_router
 from ghr.config import Settings, get_settings
 from ghr.container import Container
-from ghr.errors import ConflictError, InvalidRequestError, NotFoundError
+from ghr.errors import ConflictError, InvalidRequestError, NotFoundError, SummaryError
 from ghr.github.client import GitHubError
-from ghr.services.summaries import SummaryError
 
 logger = logging.getLogger(__name__)
 
