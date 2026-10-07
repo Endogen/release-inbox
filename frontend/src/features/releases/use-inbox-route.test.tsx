@@ -51,6 +51,17 @@ describe("useInboxRoute", () => {
     expect(result.current.navigation).toBe("POP")
   })
 
+  it("searching while a release is open keeps the way back to the list", () => {
+    const { result } = setup("/inbox")
+
+    act(() => result.current.route.selectRelease(7, { push: true }))
+    act(() => result.current.route.setSearch("react"))
+    act(() => result.current.route.closeRelease())
+
+    expect(result.current.navigation).toBe("POP")
+    expect(result.current.location.search).toBe("")
+  })
+
   it("closing a release that wasn't opened from the list just deselects it", () => {
     const { result } = setup("/inbox?release=7")
 

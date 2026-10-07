@@ -40,8 +40,8 @@ interface ReleaseDetailProps {
   focusOnOpen?: boolean
   /** Show the repository's stars; the list shows them where it is next to the detail. */
   showStars?: boolean
-  /** The rules that hide the release, once its details have loaded. */
-  hideRules: readonly HideRuleRef[] | undefined
+  /** Why the release is hidden, once its details and the preferences have loaded. */
+  hidden: { rules: readonly HideRuleRef[]; asPrerelease: boolean } | undefined
   onOpenSettings: () => void
 }
 
@@ -60,7 +60,7 @@ export function ReleaseDetail({
   onBack,
   focusOnOpen = false,
   showStars = false,
-  hideRules,
+  hidden,
   onOpenSettings,
 }: ReleaseDetailProps) {
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -131,10 +131,11 @@ export function ReleaseDetail({
           </div>
         </div>
 
-        {release.is_hidden && hideRules && (
+        {release.is_hidden && hidden && (
           <HiddenNotice
             repositoryId={repository.id}
-            rules={hideRules}
+            rules={hidden.rules}
+            hiddenAsPrerelease={hidden.asPrerelease}
             onOpenSettings={onOpenSettings}
           />
         )}

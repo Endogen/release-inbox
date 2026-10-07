@@ -13,7 +13,7 @@ import { useMediaQuery } from "@/hooks/use-media-query"
 import { useStableCallback } from "@/hooks/use-stable-callback"
 import type { Release, ReleaseListItem as ReleaseListItemData } from "@/lib/api/types"
 import { MEDIA } from "@/lib/breakpoints"
-import { CONTENT_TABS, useDisplaySettings, type ContentTab } from "@/lib/display-settings"
+import { useDisplaySettings } from "@/lib/display-settings"
 
 import { useRelease, useViewCounts } from "./api"
 import { ReleaseDetail } from "./components/release-detail"
@@ -21,10 +21,11 @@ import { ReleaseList } from "./components/release-list"
 import { SearchBox } from "./components/search-box"
 import { ViewTabs } from "./components/view-tabs"
 import { DetailSkeleton, MissingRelease, NoSelection, PaneError } from "./inbox-states"
+import { useContentTab } from "./use-content-tab"
 import { useInboxEntries } from "./use-inbox-entries"
 import { useInboxHotkeys } from "./use-inbox-hotkeys"
 import { useInboxRoute } from "./use-inbox-route"
-import { useMarkReadAfterViewing } from "./use-mark-read-after-viewing"
+import { useMoveOnFromRepository } from "./use-move-on-from-repository"
 import { useReleaseActions } from "./use-release-actions"
 
 const PANEL_IDS = ["list", "detail"]
@@ -54,8 +55,6 @@ export function InboxPage({ username }: { username: string }) {
 
   const display = useDisplaySettings()
   const preferences = usePreferences().data
-  /** The tab chosen for a repository; another repository opens on the preferred one. */
-  const [chosenTab, setChosenTab] = useState<{ repositoryId: number; tab: ContentTab } | null>(null)
   const [hideTarget, setHideTarget] = useState<Release | null>(null)
   /** The release whose snooze menu is open; it closes when the selection changes. */
   const [snoozeMenuFor, setSnoozeMenuFor] = useState<number | null>(null)
@@ -83,13 +82,11 @@ export function InboxPage({ username }: { username: string }) {
   /** "What's new" lists the unread releases an inbox entry stands for. */
   const whatsNewCount =
     view === "inbox" && entry && entry.older_count > 0 ? entry.older_count + 1 : 0
-  const contentTabs = CONTENT_TABS.filter((tab) => tab !== "changes" || whatsNewCount > 0)
-  const wantedTab =
-    chosenTab && chosenTab.repositoryId === selected?.repository.id ? chosenTab.tab : display.openOn
-  const shownTab = contentTabs.includes(wantedTab) ? wantedTab : "notes"
+  const contentTab = useContentTab(selected?.repository.id, whatsNewCount)
 
-  function changeContentTab(tab: ContentTab) {
-    if (selected) setChosenTab({ repositoryId: selected.repository.id, tab })
+  /** On phones, opening a release from the list adds a history entry that back returns from. */
+  function openReleaseById(id: number) {
+    route.selectRelease(id, { push: !isDesktop && route.releaseId === null })
   }
 
   const actions = useReleaseActions({
@@ -98,8 +95,9 @@ export function InboxPage({ username }: { username: string }) {
     entryOf: (repositoryId) => loaded.get(repositoryId),
     onLeave: (release) => {
       if (selected?.repository.id !== release.repository.id) return
-      // The action took care of the release; leaving it isn't moving on from it.
-      skipMarkRead()
+      // The action took care of the release; leaving it isn't moving on from it. (``skipMoveOn``
+      // is declared below; actions only run after rendering.)
+      skipMoveOn()
       if (!isDesktop) {
         route.closeRelease()
         return
@@ -109,13 +107,13 @@ export function InboxPage({ username }: { username: string }) {
     },
   })
 
-  const skipMarkRead = useMarkReadAfterViewing(selected, {
+  const skipMoveOn = useMoveOnFromRepository(selected, {
     enabled: preferences?.mark_read_after_viewing ?? false,
-    markRead: actions.markViewed,
+    onMoveOn: actions.markViewed,
   })
 
   const openRelease = useStableCallback((release: ReleaseListItemData) =>
-    route.selectRelease(release.id, { push: !isDesktop && route.releaseId === null })
+    openReleaseById(release.id)
   )
   const markReadFromList = useStableCallback(actions.markRead)
   const unsubscribeFromList = useStableCallback(actions.unsubscribe)
@@ -128,12 +126,7 @@ export function InboxPage({ username }: { username: string }) {
     const index =
       selectedIndex === -1 ? 0 : Math.min(items.length - 1, Math.max(0, selectedIndex + delta))
     const next = items[index]
-    if (next) route.selectRelease(next.id)
-  }
-
-  function cycleContentTab() {
-    const index = contentTabs.indexOf(shownTab)
-    changeContentTab(contentTabs[(index + 1) % contentTabs.length] ?? "notes")
+    if (next) openReleaseById(next.id)
   }
 
   useInboxHotkeys({
@@ -142,7 +135,7 @@ export function InboxPage({ username }: { username: string }) {
     onMove: moveSelection,
     onSnooze: (release) => setSnoozeMenuFor(release.id),
     onHide: setHideTarget,
-    onNextTab: cycleContentTab,
+    onNextTab: contentTab.cycle,
     onView: route.setView,
     onSearch: () => searchRef.current?.focus(),
     onHelp: () => setShortcutsOpen(true),
@@ -180,13 +173,20 @@ export function InboxPage({ username }: { username: string }) {
       body={selected.id === current?.id ? current.body : undefined}
       whatsNewCount={whatsNewCount}
       search={route.search}
-      contentTab={shownTab}
-      onContentTabChange={changeContentTab}
+      contentTab={contentTab.tab}
+      onContentTabChange={contentTab.choose}
       onSelectRelease={(id) => route.selectRelease(id)}
       onBack={isDesktop ? undefined : route.closeRelease}
       focusOnOpen={!isDesktop}
       showStars={!isDesktop && display.stars}
-      hideRules={current?.hide_rules}
+      hidden={
+        current && preferences
+          ? {
+              rules: current.hide_rules,
+              asPrerelease: current.prerelease && preferences.prereleases === "hide",
+            }
+          : undefined
+      }
       onOpenSettings={route.openSettings}
       snoozeMenuOpen={snoozeMenuFor === selected.id}
       onSnoozeMenuOpenChange={(open) => setSnoozeMenuFor(open ? selected.id : null)}

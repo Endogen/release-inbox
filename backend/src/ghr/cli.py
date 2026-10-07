@@ -38,6 +38,8 @@ def serve(
         port=port,
         reload=reload,
         proxy_headers=True,
+        # Live-update streams stay open as long as a tab is; don't wait for them on shutdown.
+        timeout_graceful_shutdown=5,
     )
 
 

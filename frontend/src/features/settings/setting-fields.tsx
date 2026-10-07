@@ -33,10 +33,11 @@ export function SwitchField({
     <Field orientation="horizontal" data-disabled={disabled || undefined}>
       <FieldContent>
         <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        {description && <FieldDescription>{description}</FieldDescription>}
+        {description && <FieldDescription id={`${id}-description`}>{description}</FieldDescription>}
       </FieldContent>
       <Switch
         id={id}
+        aria-describedby={description ? `${id}-description` : undefined}
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}
@@ -62,12 +63,12 @@ export function ChoiceField<T extends string>({
   options,
   onValueChange,
 }: ChoiceFieldProps<T>) {
-  const labelId = useId()
+  const id = useId()
   return (
     <Field orientation="horizontal" className="flex-wrap">
       <FieldContent className="min-w-36">
-        <FieldTitle id={labelId}>{label}</FieldTitle>
-        {description && <FieldDescription>{description}</FieldDescription>}
+        <FieldTitle id={`${id}-label`}>{label}</FieldTitle>
+        {description && <FieldDescription id={`${id}-description`}>{description}</FieldDescription>}
       </FieldContent>
       <ToggleGroup
         type="single"
@@ -75,7 +76,8 @@ export function ChoiceField<T extends string>({
         size="sm"
         spacing={0}
         value={value}
-        aria-labelledby={labelId}
+        aria-labelledby={`${id}-label`}
+        aria-describedby={description ? `${id}-description` : undefined}
         // Choosing the selected option again would clear the value; there always is one.
         onValueChange={(next) => {
           const option = options.find((item) => item.value === next)

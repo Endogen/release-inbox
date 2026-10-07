@@ -138,3 +138,33 @@ async def test_major_versions_are_flagged_as_breaking(
         flags = dict(list(await session.execute(select(Release.tag_name, Release.breaking))))
     # cli@3.0.0 is the first release of its component, so there's nothing to compare with.
     assert flags == {"lib@1.4.0": False, "lib@2.0.0": True, "cli@3.0.0": False}
+
+
+async def test_new_download_counts_alone_are_no_update(
+    container: Container, github_api: respx.MockRouter
+) -> None:
+    app = FakeRelease(3, 30, "acme/files", "v1.0.0", timestamp(days_ago=1), assets=("app.zip",))
+    mock_github(github_api, [app])
+    await container.sync.sync()
+    downloaded = app.release()
+    downloaded["assets"][0]["download_count"] = 500
+    github_api.get(app.refresh_url).mock(
+        return_value=Response(200, json=downloaded, headers={"ETag": '"v2"'})
+    )
+
+    assert (await container.sync.refresh_recent(published_within=WINDOW)).refreshed == 0
+
+
+async def test_a_refresh_is_no_sync_in_progress(
+    container: Container, github_api: respx.MockRouter, imported: FakeRelease
+) -> None:
+    async def check_status(_: object) -> Response:
+        status = await container.sync.status(rate_limited_until=None)
+        assert status.in_progress is False
+        return Response(304)
+
+    route = github_api.get(imported.refresh_url).mock(side_effect=check_status)
+
+    await container.sync.refresh_recent(published_within=WINDOW)
+
+    assert route.called

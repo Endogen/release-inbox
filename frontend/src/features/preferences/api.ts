@@ -16,20 +16,30 @@ export function usePreferences() {
   })
 }
 
+/**
+ * Changes some preferences, showing them right away. The saved preferences are loaded once no
+ * change is in flight, so quick changes to several settings don't undo each other.
+ */
 export function useUpdatePreferences() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: preferenceKeys.all,
     mutationFn: (changes: Partial<Preferences>) => api.patch<Preferences>("/preferences", changes),
     meta: { errorMessage: "Couldn't save the setting" },
     onMutate: async (changes) => {
       await queryClient.cancelQueries({ queryKey: preferenceKeys.all })
-      const previous = queryClient.getQueryData<Preferences>(preferenceKeys.all)
-      if (previous) queryClient.setQueryData(preferenceKeys.all, { ...previous, ...changes })
-      return { previous }
+      queryClient.setQueryData<Preferences>(
+        preferenceKeys.all,
+        (current) => current && { ...current, ...changes }
+      )
     },
-    onError: (_error, _changes, context) =>
-      queryClient.setQueryData(preferenceKeys.all, context?.previous),
-    onSuccess: (preferences) => queryClient.setQueryData(preferenceKeys.all, preferences),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: releaseKeys.all }),
+    onSettled: async (_preferences, _error, changes) => {
+      // Pre-releases move between the views; the other settings don't change the lists.
+      if ("prereleases" in changes)
+        await queryClient.invalidateQueries({ queryKey: releaseKeys.all })
+      if (queryClient.isMutating({ mutationKey: preferenceKeys.all }) === 1) {
+        await queryClient.invalidateQueries({ queryKey: preferenceKeys.all })
+      }
+    },
   })
 }

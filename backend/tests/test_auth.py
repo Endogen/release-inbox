@@ -1,5 +1,6 @@
 """Sign-in, sessions and the request-level protections."""
 
+import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -84,11 +85,23 @@ class TestLoginThrottle:
         assert blocked.status_code == 429
         assert int(blocked.headers["Retry-After"]) > 0
 
+    async def test_parallel_guesses_are_limited_too(
+        self, tmp_path: Path, client_for: ClientFactory
+    ) -> None:
+        client = await client_for(make_settings(tmp_path, login_max_failures=3))
+        wrong = {"username": USERNAME, "password": "nope"}
+
+        responses = await asyncio.gather(
+            *(client.post("/api/auth/login", json=wrong) for _ in range(10))
+        )
+
+        assert sorted(response.status_code for response in responses) == [401] * 3 + [429] * 7
+
     def test_success_resets_the_counter(self) -> None:
         throttle = LoginThrottle(max_failures=2, window_seconds=60)
-        throttle.record_failure("1.2.3.4")
+        throttle.record_attempt("1.2.3.4")
         throttle.reset("1.2.3.4")
-        throttle.record_failure("1.2.3.4")
+        throttle.record_attempt("1.2.3.4")
 
         assert throttle.retry_after("1.2.3.4") is None
         assert throttle.retry_after("5.6.7.8") is None

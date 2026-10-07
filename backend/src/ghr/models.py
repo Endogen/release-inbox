@@ -126,23 +126,22 @@ class PushSubscription(Base):
 
 
 class Preferences(Base):
-    """Single-row table with settings the user changes in the app."""
+    """Single-row table with settings the user changes in the app. The row and its defaults
+    come from the migrations (0005), so the app only ever updates it."""
 
     __tablename__ = "preferences"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     prereleases: Mapped[PrereleaseMode] = mapped_column(
-        Enum(PrereleaseMode, native_enum=False, length=8, validate_strings=True),
-        default=PrereleaseMode.SHOW,
+        Enum(PrereleaseMode, native_enum=False, length=8, validate_strings=True)
     )
     notify_about: Mapped[NotifyAbout] = mapped_column(
-        Enum(NotifyAbout, native_enum=False, length=8, validate_strings=True),
-        default=NotifyAbout.ALL,
+        Enum(NotifyAbout, native_enum=False, length=8, validate_strings=True)
     )
     #: Mark a release as read when the user moves on from it.
-    mark_read_after_viewing: Mapped[bool] = mapped_column(Boolean, default=False)
+    mark_read_after_viewing: Mapped[bool] = mapped_column(Boolean)
     #: Installed apps show the number of inbox entries on their icon.
-    app_badge: Mapped[bool] = mapped_column(Boolean, default=True)
+    app_badge: Mapped[bool] = mapped_column(Boolean)
 
 
 class Summary(Base):

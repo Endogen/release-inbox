@@ -27,6 +27,7 @@ async def login(credentials: Credentials, request: Request, container: Container
             headers={"Retry-After": str(retry_after)},
         )
 
+    throttle.record_attempt(client)
     password_hash = settings.password_hash.get_secret_value()
     # Argon2 is deliberately slow; keep it off the event loop.
     valid = await asyncio.to_thread(
@@ -37,7 +38,6 @@ async def login(credentials: Credentials, request: Request, container: Container
         password_hash=password_hash,
     )
     if not valid:
-        throttle.record_failure(client)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password")
 
     throttle.reset(client)

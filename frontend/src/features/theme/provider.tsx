@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { useMediaQuery } from "@/hooks/use-media-query"
+import { readStorage, writeStorage } from "@/lib/storage"
+
 import {
   DEFAULT_THEME,
   isTheme,
@@ -11,21 +13,8 @@ import {
 } from "./context"
 
 function readStoredTheme(): Theme {
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY)
-    return isTheme(stored) ? stored : DEFAULT_THEME
-  } catch {
-    // Storage can be blocked (privacy settings); fall back to the default.
-    return DEFAULT_THEME
-  }
-}
-
-function storeTheme(theme: Theme): void {
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, theme)
-  } catch {
-    // The choice then only lasts for this visit.
-  }
+  const stored = readStorage(THEME_STORAGE_KEY)
+  return isTheme(stored) ? stored : DEFAULT_THEME
 }
 
 /** Apply the theme without animating every color on the page from the old one. */
@@ -54,7 +43,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       theme,
       resolvedTheme,
       setTheme: (next: Theme) => {
-        storeTheme(next)
+        writeStorage(THEME_STORAGE_KEY, next)
         setTheme(next)
       },
     }),

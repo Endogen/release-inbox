@@ -3,6 +3,7 @@
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import NamedTuple
 
 # "Breaking changes" headings and mentions in any case, but not "no breaking changes".
 _BREAKING_CHANGES = re.compile(r"(?<!no )(?<!without )breaking[\s_-]+changes?", re.IGNORECASE)
@@ -41,26 +42,36 @@ def _is_semantic_major(major: int) -> bool:
     return 1 <= major <= _MAX_SEMANTIC_MAJOR
 
 
-def breaking_flags(releases_oldest_first: Iterable[tuple[str, str | None]]) -> list[bool]:
-    """Whether each release of one repository is breaking, given its tag and notes in
-    publication order.
+class VersionNotes(NamedTuple):
+    tag_name: str
+    body: str | None
+    prerelease: bool
 
-    A release is breaking if its notes say so, or if it is the first release of a new major
-    version of its component. Comparing with the highest major seen so far means backports
-    (2.0.0, then 1.9.1, then 2.0.1) don't count as new majors.
+
+def breaking_flags(releases_oldest_first: Iterable[VersionNotes]) -> list[bool]:
+    """Whether each release of one repository is breaking, given in publication order.
+
+    A release is breaking if its notes say so, or if it is a new major version of its
+    component: higher than any stable release before it (or any release, while there is no
+    stable one yet). Backports (2.0.0, then 1.9.1, then 2.0.1) therefore aren't new majors, and
+    the stable 2.0.0 after 2.0.0-rc.1 still is, for those who skip pre-releases.
     """
-    highest_major: dict[str, int] = {}
+    highest_stable: dict[str, int] = {}
+    highest_any: dict[str, int] = {}
     flags: list[bool] = []
-    for tag_name, body in releases_oldest_first:
+    for tag_name, body, prerelease in releases_oldest_first:
         version = parse_version(tag_name)
         new_major = False
         if version is not None:
-            previous = highest_major.get(version.component)
+            component = version.component
+            baseline = highest_stable.get(component, highest_any.get(component))
             new_major = (
-                previous is not None
-                and version.major > previous
+                baseline is not None
+                and version.major > baseline
                 and _is_semantic_major(version.major)
             )
-            highest_major[version.component] = max(previous or 0, version.major)
+            highest_any[component] = max(highest_any.get(component, 0), version.major)
+            if not prerelease:
+                highest_stable[component] = max(highest_stable.get(component, 0), version.major)
         flags.append(new_major or mentions_breaking_changes(body))
     return flags

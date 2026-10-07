@@ -1,3 +1,4 @@
+import { cn } from "cn"
 import { Link } from "react-router"
 
 import { Badge } from "@/components/ui/badge"
@@ -35,7 +36,11 @@ export function ViewTabs({ view, counts, search }: ViewTabsProps) {
               <Icon data-icon="inline-start" className="hidden @md:block" />
               {label}
               {count > 0 && (
-                <Badge variant={item === "inbox" ? "default" : "outline"} className="tabular-nums">
+                <Badge
+                  variant={item === "inbox" ? "default" : "outline"}
+                  // On the narrowest screens only the inbox count fits next to the four labels.
+                  className={cn("tabular-nums", item !== "inbox" && "@max-xs:hidden")}
+                >
                   {count}
                 </Badge>
               )}

@@ -64,13 +64,21 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     })
   }
 
-  /** Marks the entry as read without a toast, e.g. after the user viewed it and moved on. */
+  /**
+   * The user viewed a repository's release and moved on: marks its entry as read, without a
+   * toast, if it is unread in the inbox. Whichever version was shown, the entry is what counts;
+   * an action that is waiting for its undo window is left to finish.
+   */
   function markViewed(release: Release) {
+    const { repository } = release
+    const entry = entryOf(repository.id) ?? release
+    const waiting = pending.some((action) => action.repositoryId === repository.id)
+    if (entry.read_at !== null || viewOf(entry, Date.now()) !== "inbox" || waiting) return
     markReadMutation.mutate({
-      releaseId: release.id,
-      repositoryId: release.repository.id,
-      leaves: leavingView(release, "read"),
-      includeOlderIn: viewOf(release, Date.now()),
+      releaseId: entry.id,
+      repositoryId: repository.id,
+      leaves: leavingView(entry, "read"),
+      includeOlderIn: "inbox",
       search,
     })
   }

@@ -56,10 +56,12 @@ class StarCounter:
             due = (
                 await session.execute(
                     select(Repository.id, Repository.stars_etag).where(
+                        # Repositories the user stopped watching keep their last count.
+                        Repository.unsubscribed_at.is_(None),
                         or_(
                             Repository.stars_checked_at.is_(None),
                             Repository.stars_checked_at < cutoff,
-                        )
+                        ),
                     )
                 )
             ).all()

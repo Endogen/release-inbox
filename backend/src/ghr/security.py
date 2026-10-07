@@ -56,8 +56,12 @@ def is_same_origin_request(
 
 
 class LoginThrottle:
-    """Limits failed sign-ins per client address within a sliding window (in memory, which is
-    sufficient for the single-process deployment)."""
+    """Limits unsuccessful sign-ins per client address within a sliding window (in memory, which
+    is sufficient for the single-process deployment).
+
+    Attempts are counted when they start and forgotten when one succeeds, so a burst of
+    parallel guesses can't all get in while the first is still being checked.
+    """
 
     def __init__(self, *, max_failures: int, window_seconds: int) -> None:
         self._max_failures = max_failures
@@ -71,7 +75,7 @@ class LoginThrottle:
             return None
         return max(1, int(failures[0] + self._window - time.monotonic()) + 1)
 
-    def record_failure(self, client: str) -> None:
+    def record_attempt(self, client: str) -> None:
         self._failures.setdefault(client, deque()).append(time.monotonic())
 
     def reset(self, client: str) -> None:

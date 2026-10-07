@@ -27,6 +27,11 @@ Undo. Releases open full screen.
   <img src="docs/screenshots/mobile-release.png" alt="A release opened on a phone" width="300">
 </p>
 
+**Settings** for notifications and the inbox are synced across your devices; the display
+options apply to the device you set them on.
+
+![The settings panel with notifications, inbox and display options](docs/screenshots/settings-light.png)
+
 ## Features
 
 - **One entry per repository.** Only the newest release is listed (`+N older` shows the rest;
@@ -44,6 +49,8 @@ Undo. Releases open full screen.
   a monorepo, without unsubscribing. Hidden releases stay available in the *Hidden* view.
 - **Pre-releases on your terms.** Treat them like other releases, keep them in the inbox
   without notifications, or keep them in the *Hidden* view.
+- **Read as you go.** Optionally, a release is marked as read once you move on to another
+  repository or close it.
 - **Unsubscribe in one click.** Stops watching the repository on GitHub.
 - **Swipe to triage.** In the inbox and snoozed views, swipe an entry left to mark it as read
   or right to unsubscribe. Both actions, whether you swipe, click or use a shortcut, show a toast with
@@ -68,10 +75,10 @@ Undo. Releases open full screen.
   promoted to a stable release notifies you again.
 - **Keyboard driven.** `j`/`k` navigate, `e` marks as read, `s` snoozes, `h` hides, `o` opens on
   GitHub, `/` searches, and `?` lists all shortcuts.
-- **Your way.** Mark releases as read once you move on from them, and choose per device: light
-  or dark theme, a compact list, star counts, relative or calendar dates, and the tab releases
-  open on.
-- Responsive layout, installable as an app that shows the number of inbox entries on its icon.
+- **Display options per device.** Light, dark or system theme, a compact list, star counts,
+  relative or calendar dates, and the tab releases open on.
+- **Installable** as an app on desktop and phones, with the number of inbox entries on its
+  icon. The layout adapts from phones to wide screens.
 
 ## Architecture
 
@@ -86,7 +93,7 @@ That process also runs the poller, so run exactly one instance.
 
 | Backend module                 | Responsibility                                                |
 | ------------------------------ | ------------------------------------------------------------- |
-| `ghr.domain`                   | The views and pre-release modes shared by all layers          |
+| `ghr.domain`                   | Views, pre-release modes and notification choices             |
 | `ghr.github`                   | Typed client for the GitHub REST API                          |
 | `ghr.services.sync`            | Imports release notifications and refreshes recent releases   |
 | `ghr.services.filters`         | SQL conditions for the views, hiding and search               |
@@ -98,10 +105,11 @@ That process also runs the poller, so run exactly one instance.
 | `ghr.services.snooze`          | Ends snoozes and sends reminders                              |
 | `ghr.services.stars`           | Star counts of repositories, refreshed daily                  |
 | `ghr.services.assets`          | Files attached to releases                                    |
-| `ghr.services.preferences`     | User preferences (pre-release mode)                           |
-| `ghr.services.summaries`       | Claude summaries and their cache                              |
+| `ghr.services.preferences`     | Preferences: pre-releases, notifications, read behaviour      |
+| `ghr.services.summaries`       | Summaries and their cache; `claude` creates them              |
 | `ghr.services.readme`          | README cache with conditional requests                        |
 | `ghr.scheduler`                | Background loops: sync, refresh, snoozes, rate-limit backoff  |
+| `ghr.migrations`               | Alembic migrations, applied by `ghr migrate`                  |
 | `ghr.api`                      | HTTP routes; everything except sign-in requires a session     |
 
 | Frontend directory             | Responsibility                                                 |
@@ -110,7 +118,9 @@ That process also runs the poller, so run exactly one instance.
 | `src/features/<feature>`       | One area each: its API hooks (`api.ts`), components and logic  |
 | `src/features/releases`        | The inbox: list, detail, actions with undo, keyboard shortcuts |
 | `src/components`               | Shared components; `ui/` holds the shadcn/ui components        |
-| `src/hooks`, `src/lib`         | Generic hooks, the API client, time and markdown URL helpers   |
+| `src/features/settings`        | The settings panel (a full page on phones)                     |
+| `src/hooks`                    | Generic hooks: media queries, gestures, hotkeys, app badge     |
+| `src/lib`                      | API client, display settings, hotkeys, time and markdown URLs  |
 
 ### Behaviour worth knowing
 
@@ -266,6 +276,8 @@ cd backend && sudo uv sync --frozen --no-dev
 cd ../frontend && sudo npm ci && sudo npm run build
 sudo systemctl restart ghr
 ```
+
+The restart applies new database migrations before the app starts.
 
 ## Configuration reference
 

@@ -3,7 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.db import utcnow
-from ghr.domain import NotifyAbout, PrereleaseMode
+from ghr.domain import PrereleaseMode
 from ghr.events import RELEASES_CHANGED, EventBroker
 from ghr.models import Preferences
 from ghr.schemas import PreferenceChanges, PreferenceSettings
@@ -13,14 +13,8 @@ _PREFERENCES_ID = 1
 
 
 async def load_preferences(session: AsyncSession) -> Preferences:
-    """The preferences row; defaults apply until the user changes something."""
-    return await session.get(Preferences, _PREFERENCES_ID) or Preferences(
-        id=_PREFERENCES_ID,
-        prereleases=PrereleaseMode.SHOW,
-        notify_about=NotifyAbout.ALL,
-        mark_read_after_viewing=False,
-        app_badge=True,
-    )
+    """The preferences row, created with the defaults by a migration."""
+    return await session.get_one(Preferences, _PREFERENCES_ID)
 
 
 async def load_view_context(session: AsyncSession) -> ViewContext:
@@ -42,7 +36,6 @@ class PreferencesService:
         hidden_before = preferences.prereleases is PrereleaseMode.HIDE
         for name, value in changes.model_dump(exclude_unset=True).items():
             setattr(preferences, name, value)
-        preferences = await self._session.merge(preferences)
         await self._session.commit()
         if hidden_before != (preferences.prereleases is PrereleaseMode.HIDE):
             # Pre-releases moved between the Hidden view and the others.

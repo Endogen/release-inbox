@@ -41,7 +41,8 @@ export function useInboxRoute() {
     const next = new URLSearchParams(searchParams)
     if (value) next.set(key, value)
     else next.delete(key)
-    setSearchParams(next, { replace: !options.push, state: options.state })
+    // Without new state, the entry keeps its own (how the release or settings were opened).
+    setSearchParams(next, { replace: !options.push, state: options.state ?? state })
   }
 
   /**

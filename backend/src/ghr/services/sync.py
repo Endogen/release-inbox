@@ -86,11 +86,14 @@ class NotificationSyncService:
         self._broker = broker
         self._notifier = notifier
         self._tasks = tasks
+        #: Serialises syncs and refreshes, which write the same releases.
         self._lock = asyncio.Lock()
+        self._syncing = False
 
     @property
     def in_progress(self) -> bool:
-        return self._lock.locked()
+        """A notification sync is running; refreshes in the background don't count."""
+        return self._syncing
 
     async def status(self, *, rate_limited_until: datetime | None) -> SyncStatus:
         """The state of the last sync. The scheduler knows about rate limits."""
@@ -107,10 +110,12 @@ class NotificationSyncService:
     async def sync(self) -> SyncResult:
         """Import new release notifications. Concurrent calls are serialised."""
         async with self._lock:
+            self._syncing = True
             self._publish_status(in_progress=True)
             try:
                 return await self._sync()
             finally:
+                self._syncing = False
                 self._publish_status(in_progress=False)
 
     async def refresh_recent(self, *, published_within: timedelta) -> RefreshResult:
@@ -398,7 +403,10 @@ async def _classify(session: AsyncSession, repository_ids: Iterable[int]) -> Non
                 .order_by(Release.published_at, Release.id)
             )
         ).all()
-        flags = breaking.breaking_flags((release.tag_name, release.body) for release in releases)
+        flags = breaking.breaking_flags(
+            breaking.VersionNotes(release.tag_name, release.body, release.prerelease)
+            for release in releases
+        )
         for release, flag in zip(releases, flags, strict=True):
             release.breaking = flag
 
@@ -422,7 +430,9 @@ def _apply_changes(release: Release, item: FetchedRelease) -> bool:
     """Update a stored release from GitHub. Returns whether anything visible changed."""
 
     def visible() -> tuple[object, ...]:
-        return (release.tag_name, release.name, release.body, release.prerelease, release.assets)
+        # Download counts change all the time; they are stored, but aren't worth an update.
+        files = [{**asset, "download_count": 0} for asset in release.assets or []]
+        return (release.tag_name, release.name, release.body, release.prerelease, files)
 
     before = visible()
     _copy_release_fields(release, item.release, item.etag)

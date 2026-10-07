@@ -102,7 +102,7 @@ export const ReleaseListItem = memo(function ReleaseListItem({
               date={release.published_at}
               format="short"
               className={cn(
-                "pointer-events-auto ml-auto shrink-0 tabular-nums transition-opacity",
+                "ml-auto shrink-0 tabular-nums transition-opacity",
                 onMarkRead && "pointer-fine:group-hover/row:opacity-0"
               )}
             />

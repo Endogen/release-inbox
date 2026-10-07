@@ -114,6 +114,9 @@ class WebPushChannel:
             logger.warning("Push to subscription %s failed: %s", subscription.id, error)
         except (aiohttp.ClientError, TimeoutError) as error:
             logger.warning("Push to subscription %s failed: %s", subscription.id, error)
+        except Exception:
+            # One subscription's problem must not stop the delivery to the others.
+            logger.exception("Push to subscription %s failed unexpectedly", subscription.id)
         return _Delivery.FAILED
 
     async def _remove(self, subscription_ids: list[int]) -> None:

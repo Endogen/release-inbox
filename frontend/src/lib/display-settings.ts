@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react"
 
+import { readStorage, writeStorage } from "@/lib/storage"
+
 /** The tabs of a release, in order. */
 export const CONTENT_TABS = ["notes", "changes", "readme"] as const
 export type ContentTab = (typeof CONTENT_TABS)[number]
@@ -44,7 +46,7 @@ export function parseDisplaySettings(stored: string | null): DisplaySettings {
   }
 }
 
-let current = parseDisplaySettings(localStorage.getItem(STORAGE_KEY))
+let current = parseDisplaySettings(readStorage(STORAGE_KEY))
 const listeners = new Set<() => void>()
 
 function notify(): void {
@@ -73,6 +75,6 @@ export function useDisplaySettings(): DisplaySettings {
 
 export function updateDisplaySettings(changes: Partial<DisplaySettings>): void {
   current = { ...current, ...changes }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+  writeStorage(STORAGE_KEY, JSON.stringify(current))
   notify()
 }

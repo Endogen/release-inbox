@@ -6,6 +6,7 @@ import pytest
 
 from ghr.services.breaking import (
     ComponentVersion,
+    VersionNotes,
     breaking_flags,
     mentions_breaking_changes,
     parse_version,
@@ -16,10 +17,13 @@ from ghr.services.breaking import (
 class Classifiable:
     tag_name: str
     body: str | None = None
+    prerelease: bool = False
 
 
 def flags(*releases: Classifiable) -> list[bool]:
-    return breaking_flags((release.tag_name, release.body) for release in releases)
+    return breaking_flags(
+        VersionNotes(release.tag_name, release.body, release.prerelease) for release in releases
+    )
 
 
 @pytest.mark.parametrize(
@@ -63,6 +67,20 @@ def test_new_major_versions_per_component() -> None:
         Classifiable("web@2.0.0"),
         Classifiable("api@1.1.0"),
     ) == [False, False, True, False]
+
+
+def test_the_stable_release_of_a_new_major_is_breaking_after_its_prereleases() -> None:
+    assert flags(
+        Classifiable("v1.9.0"),
+        Classifiable("v2.0.0-rc.1", prerelease=True),
+        Classifiable("v2.0.0"),
+        Classifiable("v2.0.1"),
+    ) == [False, True, True, False]
+    # Without an earlier major, a release candidate's stable release is nothing new.
+    assert flags(Classifiable("v2.0.0-rc.1", prerelease=True), Classifiable("v2.0.0")) == [
+        False,
+        False,
+    ]
 
 
 def test_backports_are_not_new_majors() -> None:
