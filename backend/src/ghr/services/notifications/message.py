@@ -18,6 +18,10 @@ class Notification:
     tag: str
     #: Entries in the inbox when it was sent; installed apps show the number on their icon.
     unread: int | None = None
+    #: The releases it is about, for channels that offer actions on them (the desktop app).
+    release_ids: tuple[int, ...] = ()
+    #: Set if all of them belong to one repository.
+    repository_id: int | None = None
 
     def link(self, public_url: str | None) -> str:
         """Into the app if its address is known, else to GitHub."""

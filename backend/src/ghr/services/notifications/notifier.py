@@ -4,6 +4,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import replace
+from typing import TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -120,6 +121,7 @@ def _new_releases_notification(releases: Sequence[Release]) -> Notification:
             path=f"/inbox?release={release.id}",
             external_url=release.html_url,
             tag=f"release-{release.id}",
+            **_about(releases),
         )
     return Notification(
         title=f"{len(releases)} new releases",
@@ -127,6 +129,7 @@ def _new_releases_notification(releases: Sequence[Release]) -> Notification:
         path="/inbox",
         external_url=GITHUB_NOTIFICATIONS_URL,
         tag="releases",
+        **_about(releases),
     )
 
 
@@ -139,6 +142,7 @@ def _snooze_ended_notification(releases: Sequence[Release]) -> Notification:
             path=f"/inbox?release={release.id}",
             external_url=release.html_url,
             tag=f"snooze-{release.id}",
+            **_about(releases),
         )
     return Notification(
         title=f"{len(releases)} snoozed releases are back",
@@ -146,6 +150,20 @@ def _snooze_ended_notification(releases: Sequence[Release]) -> Notification:
         path="/inbox",
         external_url=GITHUB_NOTIFICATIONS_URL,
         tag="snooze",
+        **_about(releases),
+    )
+
+
+class _About(TypedDict):
+    release_ids: tuple[int, ...]
+    repository_id: int | None
+
+
+def _about(releases: Sequence[Release]) -> _About:
+    repository_ids = {release.repository_id for release in releases}
+    return _About(
+        release_ids=tuple(release.id for release in releases),
+        repository_id=next(iter(repository_ids)) if len(repository_ids) == 1 else None,
     )
 
 

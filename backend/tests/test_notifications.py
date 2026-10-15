@@ -19,8 +19,10 @@ from sqlalchemy import select
 
 from ghr.cli import vapid_key_pair
 from ghr.container import Container
+from ghr.events import EventBroker
 from ghr.models import PushSubscription
 from ghr.services.notifications import Notification, Notifier
+from ghr.services.notifications.desktop import DesktopChannel
 from ghr.services.notifications.ntfy import NtfyChannel
 from ghr.services.notifications.telegram import TELEGRAM_API_URL, TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
@@ -75,6 +77,33 @@ class TestNtfy:
             assert not await channel.send(NOTIFICATION)
 
         assert json.loads(route.calls.last.request.content)["click"] == NOTIFICATION.external_url
+
+
+class TestDesktop:
+    async def test_sends_the_notification_to_connected_desktop_apps(self) -> None:
+        broker = EventBroker()
+        channel = DesktopChannel(broker)
+        notification = replace(NOTIFICATION, unread=3, release_ids=(2,), repository_id=10)
+
+        async with broker.subscribe(notifications=True) as queue:
+            assert await channel.send(notification)
+
+        event = queue.get_nowait()
+        assert event.type == "notification"
+        assert event.data == {
+            "title": "acme/app <beta>",
+            "body": "v2.0.0 was released",
+            "url": "/inbox?release=2",
+            "tag": "release-2",
+            "unread": 3,
+            "release_ids": [2],
+            "repository_id": 10,
+        }
+
+    async def test_reports_that_no_desktop_app_is_connected(self) -> None:
+        broker = EventBroker()
+        async with broker.subscribe():  # a browser tab, which doesn't want notifications
+            assert not await DesktopChannel(broker).send(NOTIFICATION)
 
 
 class TestTelegram:
@@ -163,6 +192,9 @@ class TestAnnouncementFilters:
         assert [notification.title for notification in sent] == ["2 new releases"]
         assert sent[0].body == "acme/tool, acme/app"
         assert sent[0].unread == 2  # inbox entries, for the badge on the app icon
+        # Two repositories: the desktop app offers actions on the releases, not the repository.
+        assert sent[0].release_ids == (2, 1)
+        assert sent[0].repository_id is None
 
     @pytest.mark.parametrize("mode", ["mute", "hide"])
     async def test_skips_prereleases_unless_shown_normally(
@@ -178,6 +210,8 @@ class TestAnnouncementFilters:
         await self.announce(container, github_api, user_client)
 
         assert [notification.title for notification in sent] == ["acme/app"]
+        assert sent[0].release_ids == (1,)
+        assert sent[0].repository_id == 10
 
     async def test_skips_muted_repositories(
         self,
@@ -230,7 +264,7 @@ async def test_channels_and_test_notification_endpoints(
     user_client: AsyncClient, sent: SentNotifications
 ) -> None:
     channels = (await user_client.get("/api/notifications/channels")).json()
-    assert {channel["name"] for channel in channels} == {"web-push", "ntfy", "telegram"}
+    assert {channel["name"] for channel in channels} == {"web-push", "ntfy", "telegram", "desktop"}
 
     result = await user_client.post("/api/notifications/test")
 

@@ -1,5 +1,7 @@
 """The in-process event broker behind the live updates."""
 
+import asyncio
+
 from ghr.events import Event, EventBroker
 
 
@@ -24,3 +26,17 @@ async def test_a_slow_subscriber_keeps_the_latest_events() -> None:
 
     assert received[-1] == queue.maxsize + 4
     assert len(received) == queue.maxsize
+
+
+async def test_notifications_only_reach_subscribers_that_ask_for_them() -> None:
+    broker = EventBroker()
+    async with broker.subscribe() as tab, broker.subscribe(notifications=True) as desktop:
+        assert broker.publish(Event("notification", {"title": "acme/app"})) == 1
+        assert broker.publish(Event("releases-changed")) == 2
+
+        assert [event.type for event in _drain(desktop)] == ["notification", "releases-changed"]
+        assert [event.type for event in _drain(tab)] == ["releases-changed"]
+
+
+def _drain(queue: asyncio.Queue[Event]) -> list[Event]:
+    return [queue.get_nowait() for _ in range(queue.qsize())]

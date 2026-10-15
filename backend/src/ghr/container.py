@@ -14,6 +14,7 @@ from ghr.github.client import GitHubClient
 from ghr.scheduler import SyncScheduler
 from ghr.security import LoginThrottle
 from ghr.services.notifications import Notifier
+from ghr.services.notifications.desktop import DesktopChannel
 from ghr.services.notifications.ntfy import NtfyChannel
 from ghr.services.notifications.telegram import TelegramChannel
 from ghr.services.notifications.web_push import WebPushChannel
@@ -75,6 +76,7 @@ class Container:
                     chat_id=settings.telegram_chat_id,
                     public_url=settings.public_url,
                 ),
+                DesktopChannel(broker),
             ],
         )
         sync = NotificationSyncService(session_factory, github, broker, notifier, tasks)
