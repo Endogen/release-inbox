@@ -13,6 +13,8 @@ pub struct Config {
     server_url: Option<String>,
     /// Whether the user was told once that closing the window keeps the app in the tray.
     pub tray_hint_shown: bool,
+    /// Use a system-coloured template icon in the macOS menu bar.
+    pub monochrome_tray_icon: bool,
 }
 
 impl Config {
@@ -121,5 +123,17 @@ mod tests {
             serde_json::from_str(r#"{"server_url":"https://a.example/"}"#).unwrap();
         assert_eq!(config.server_url().unwrap().as_str(), "https://a.example/");
         assert!(!config.tray_hint_shown);
+        assert!(!config.monochrome_tray_icon);
+    }
+
+    #[test]
+    fn remembers_monochrome_without_losing_server_settings() {
+        let mut config = Config::default();
+        config.set_server_url(&Url::parse("https://a.example/").unwrap());
+        config.monochrome_tray_icon = true;
+        let saved = serde_json::to_string(&config).unwrap();
+        let restored: Config = serde_json::from_str(&saved).unwrap();
+        assert!(restored.monochrome_tray_icon);
+        assert_eq!(restored.server_url(), config.server_url());
     }
 }

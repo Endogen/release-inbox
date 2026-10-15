@@ -167,6 +167,9 @@ newer: older servers don't send it notifications.
   (on macOS also the Dock icon); its menu has *Sync now*, *Reload* (for example after the
   server was unreachable) and *Quit*. A dot on the tray icon and on the taskbar button (a count
   on the macOS Dock) shows that the inbox has entries.
+- On macOS, *Monochrome icon* in the tray menu switches to a rocket that follows
+  the menu bar's light or dark appearance, including its unread dot. The choice is saved
+  for the next launch; the Dock icon stays coloured.
 - *Start at login* in the tray menu adds the app to the system's login items (the registry's
   `Run` key on Windows, a Launch Agent on macOS, an autostart entry on Linux). Started that way,
   it waits in the tray with the window hidden (`--hidden`) and still notifies you.
