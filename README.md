@@ -79,6 +79,9 @@ options apply to the device you set them on.
   relative or calendar dates, and the tab releases open on.
 - **Installable** as an app on desktop and phones, with the number of inbox entries on its
   icon. The layout adapts from phones to wide screens.
+- **Desktop app** for Windows, macOS and Linux. It shows your server's app in a native window,
+  keeps running in the system tray when you close it and shows notifications natively;
+  clicking one opens the release. See [Desktop app](#desktop-app).
 
 ## Architecture
 
@@ -86,6 +89,7 @@ options apply to the device you set them on.
 frontend/   React 19 + TypeScript + Vite, shadcn/ui (Radix, Tailwind CSS v4), TanStack Query
 backend/    FastAPI, SQLAlchemy 2 (async) on SQLite, Alembic, httpx, pywebpush, Anthropic SDK
 deploy/     systemd units (service and daily backup), nginx site and environment template
+desktop/    Tauri 2 desktop app (Rust): native window, tray and notifications around the web app
 ```
 
 In production nginx serves the built frontend and proxies `/api` to a single uvicorn process.
@@ -148,6 +152,46 @@ That process also runs the poller, so run exactly one instance.
   Add to Dock or Home Screen). While the app is closed, browser push keeps it up to date; on iOS
   it only shows once notifications are allowed.
 - **Summaries** send the release notes to the Anthropic API and are billed to your API key.
+
+## Desktop app
+
+The desktop app is a native window around the web app of your server, built with
+[Tauri 2](https://tauri.app). It uses the system's web view (WebView2 on Windows, WebKit on
+macOS and Linux), so it doesn't bundle a browser.
+
+- On first start it asks for your server's address; you then sign in as usual. _Change server…_
+  in the tray menu asks again.
+- Closing the window keeps the app in the system tray. Click the tray icon to open it again;
+  its menu has _Sync now_ and _Quit_. A dot on the tray icon (and the count on the macOS Dock)
+  shows that the inbox has entries.
+- Notifications arrive over the app's live-update connection (`/api/events?notifications=true`)
+  and follow the same rules as the other channels: mutes, pre-releases, _Breaking only_. They
+  need no setup on the server, but only reach a desktop app that is running; there's no queue
+  for one that is offline. Clicking a notification opens its release.
+- Links that leave the app, such as releases on github.com, open in your browser. Only pages of
+  the server you entered can use the desktop functions.
+
+| Desktop module                | Responsibility                                                  |
+| ----------------------------- | --------------------------------------------------------------- |
+| `desktop/setup`               | The page that asks for the server's address                     |
+| `src-tauri/src/window.rs`     | The main window, close to tray, links, the server's permissions |
+| `src-tauri/src/tray.rs`       | Tray icon, its menu and the inbox dot                           |
+| `src-tauri/src/commands.rs`   | What the pages can call: connect, notifications, inbox count    |
+| `src-tauri/src/config.rs`     | The app's settings (server address) in its config folder        |
+| `frontend/src/lib/desktop.ts` | The web app's side: detects the desktop app and talks to it     |
+
+**Building.** Install Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
+for your platform, then:
+
+```bash
+cd desktop && npm install
+npm run dev     # run it; for local development, connect to http://localhost:5173
+npm run build   # installers in src-tauri/target/release/bundle/
+```
+
+GitHub Actions builds the installers for Windows (`.msi`, `.exe`), macOS (`.dmg`) and Linux
+(`.AppImage`, `.deb`, `.rpm`) and keeps them as artifacts of the workflow run. The builds are
+not signed: Windows SmartScreen and macOS Gatekeeper warn before the first start.
 
 ## Local development
 
