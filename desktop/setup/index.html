@@ -12,8 +12,8 @@
       <img src="icon.svg" alt="" width="56" height="56" />
       <h1>Connect to your server</h1>
       <p class="lead">
-        Releases runs on your own server. Enter its address to open your inbox here; you sign
-        in as usual.
+        Releases runs on your own server. Enter its address to open your inbox here; you sign in as
+        usual.
       </p>
       <form id="connect" novalidate>
         <label for="url">Server address</label>
@@ -27,6 +27,7 @@
           placeholder="releases.example.com"
           required
           autofocus
+          aria-describedby="error"
         />
         <p id="error" class="error" role="alert" hidden></p>
         <div class="actions">

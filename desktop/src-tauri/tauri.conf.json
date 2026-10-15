@@ -1,7 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Releases",
-  "version": "0.5.1",
   "identifier": "io.github.endogen.releaseinbox",
   "build": {
     "frontendDist": "../setup"
@@ -10,18 +9,19 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self'; connect-src ipc: http://ipc.localhost http: https:"
+      "csp": "default-src 'self'; style-src 'self'; connect-src ipc: http://ipc.localhost http: https:"
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "Endogen",
     "category": "DeveloperTool",
     "shortDescription": "Your GitHub release inbox",
     "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
       "icons/128x128@2x.png",
+      "icons/128x128.png",
+      "icons/32x32.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ]

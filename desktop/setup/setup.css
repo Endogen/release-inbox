@@ -8,7 +8,11 @@
   --primary-foreground: #fafafa;
   --destructive: #dc2626;
   font-family:
-    "Geist Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {

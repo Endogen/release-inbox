@@ -31,11 +31,16 @@ async function isReachable(server) {
   }
 }
 
+function setBusy(busy) {
+  submit.disabled = busy
+  submit.setAttribute("aria-busy", String(busy))
+  submit.textContent = busy ? "Connecting…" : "Connect"
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault()
   showError("")
-  submit.disabled = true
-  submit.textContent = "Connecting…"
+  setBusy(true)
   try {
     const server = await invoke("check_server_url", { url: input.value })
     if (!(await isReachable(server))) {
@@ -46,18 +51,19 @@ form.addEventListener("submit", async (event) => {
   } catch (message) {
     showError(String(message))
   } finally {
-    submit.disabled = false
-    submit.textContent = "Connect"
+    setBusy(false)
   }
 })
 
 input.addEventListener("input", () => showError(""))
 
 // Coming from "Change server…": offer the current one, and a way back to it.
-const current = await invoke("server_url")
+const current = await invoke("server_url").catch(() => null)
 if (current) {
   input.value = current
   input.select()
   cancel.hidden = false
-  cancel.addEventListener("click", () => invoke("connect", { url: current }))
+  cancel.addEventListener("click", () =>
+    invoke("connect", { url: current }).catch((message) => showError(String(message)))
+  )
 }

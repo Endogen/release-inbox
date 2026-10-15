@@ -1,13 +1,9 @@
 {
   "name": "ghr-desktop",
   "private": true,
-  "version": "0.5.1",
-  "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
-    "icons": "tauri icon ../frontend/public/icons/icon-512.png",
-    "tauri": "tauri"
+    "build": "tauri build"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

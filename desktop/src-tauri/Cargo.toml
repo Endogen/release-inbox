@@ -2,11 +2,13 @@
 name = "ghr-desktop"
 version = "0.5.1"
 description = "Desktop app for the GitHub release inbox"
+authors = ["Endogen"]
 edition = "2024"
+rust-version = "1.88"
 publish = false
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = "2"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
