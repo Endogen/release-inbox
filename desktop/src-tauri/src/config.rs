@@ -13,7 +13,7 @@ pub struct Config {
     server_url: Option<String>,
     /// Whether the user was told once that closing the window keeps the app in the tray.
     pub tray_hint_shown: bool,
-    /// Use a system-coloured template icon in the macOS menu bar.
+    /// Use a monochrome tray icon on macOS and Windows.
     pub monochrome_tray_icon: bool,
 }
 

@@ -9,7 +9,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 use crate::config;
 use crate::{AppState, window};
 
@@ -42,7 +42,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
         ],
     )?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     let monochrome = CheckMenuItem::with_id(
         app,
         "monochrome",
@@ -51,10 +51,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         uses_monochrome(app),
         None::<&str>,
     )?;
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", windows))]
     menu.insert(&monochrome, 5)?;
     TrayIconBuilder::with_id(TRAY)
-        .icon(icons().for_state(0, uses_monochrome(app)).clone())
+        .icon(current_icon(0, uses_monochrome(app)).clone())
         .icon_as_template(uses_monochrome(app))
         .tooltip(tooltip(0))
         .menu(&menu)
@@ -69,7 +69,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let _ = window::navigate(app, window::current_server(app).as_ref());
             }
             "autostart" => toggle_autostart(app, &autostart),
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", windows))]
             "monochrome" => toggle_monochrome(app, &monochrome),
             "server" => {
                 let _ = window::navigate(app, None);
@@ -88,6 +88,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    #[cfg(windows)]
+    watch_taskbar_theme(app);
     Ok(())
 }
 
@@ -96,7 +98,7 @@ fn starts_at_login(app: &AppHandle) -> bool {
 }
 
 fn uses_monochrome(app: &AppHandle) -> bool {
-    cfg!(target_os = "macos")
+    cfg!(any(target_os = "macos", windows))
         && app
             .state::<AppState>()
             .config
@@ -105,7 +107,7 @@ fn uses_monochrome(app: &AppHandle) -> bool {
             .monochrome_tray_icon
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
     let result = (|| -> Result<(), String> {
         let state = app.state::<AppState>();
@@ -119,7 +121,7 @@ fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
         update_icon(app, count).map_err(|error| error.to_string())
     })();
     if let Err(error) = result {
-        eprintln!("Couldn't change the menu bar icon: {error}");
+        eprintln!("Couldn't change the tray icon: {error}");
     }
     // Native check items toggle before the callback; restore the saved value on failure.
     let _ = item.set_checked(uses_monochrome(app));
@@ -128,12 +130,40 @@ fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
 fn update_icon(app: &AppHandle, count: u32) -> tauri::Result<()> {
     if let Some(tray) = app.tray_by_id(TRAY) {
         let monochrome = uses_monochrome(app);
-        tray.set_icon_with_as_template(
-            Some(icons().for_state(count, monochrome).clone()),
-            monochrome,
-        )?;
+        tray.set_icon_with_as_template(Some(current_icon(count, monochrome).clone()), monochrome)?;
     }
     Ok(())
+}
+
+fn current_icon(count: u32, monochrome: bool) -> &'static Image<'static> {
+    #[cfg(windows)]
+    let dark = monochrome && crate::windows_theme::is_dark();
+    #[cfg(not(windows))]
+    let dark = false; // macOS tints the black template itself.
+    icons().for_state(count, monochrome, dark)
+}
+
+#[cfg(windows)]
+fn watch_taskbar_theme(app: &AppHandle) {
+    let handle = app.clone();
+    let result = crate::windows_theme::watch(move || {
+        let app = handle.clone();
+        // Run on the UI thread and read the latest count there, so a queued theme change
+        // cannot overwrite a more recent unread update or a switch back to colour.
+        if let Err(error) = handle.run_on_main_thread(move || {
+            if uses_monochrome(&app) {
+                let count = app.state::<AppState>().unread.lock().unwrap().unwrap_or(0);
+                if let Err(error) = update_icon(&app, count) {
+                    eprintln!("Couldn't update the tray icon for the Windows theme: {error}");
+                }
+            }
+        }) {
+            eprintln!("Couldn't dispatch the Windows theme change: {error}");
+        }
+    });
+    if let Err(error) = result {
+        eprintln!("Couldn't watch the Windows taskbar theme: {error}");
+    }
 }
 
 /// Adds or removes the login item, which starts the app in the tray. The check mark shows
@@ -189,18 +219,22 @@ struct Icons {
     dotted: Image<'static>,
     monochrome: Image<'static>,
     monochrome_dotted: Image<'static>,
+    monochrome_white: Image<'static>,
+    monochrome_white_dotted: Image<'static>,
     /// The dot alone, on the taskbar button.
     #[cfg(windows)]
     overlay: Image<'static>,
 }
 
 impl Icons {
-    fn for_state(&self, count: u32, monochrome: bool) -> &Image<'static> {
-        match (monochrome, count > 0) {
-            (false, false) => &self.plain,
-            (false, true) => &self.dotted,
-            (true, false) => &self.monochrome,
-            (true, true) => &self.monochrome_dotted,
+    fn for_state(&self, count: u32, monochrome: bool, dark: bool) -> &Image<'static> {
+        match (monochrome, count > 0, dark) {
+            (false, false, _) => &self.plain,
+            (false, true, _) => &self.dotted,
+            (true, false, false) => &self.monochrome,
+            (true, true, false) => &self.monochrome_dotted,
+            (true, false, true) => &self.monochrome_white,
+            (true, true, true) => &self.monochrome_white_dotted,
         }
     }
 }
@@ -214,15 +248,28 @@ fn icons() -> &'static Icons {
         let monochrome =
             Image::from_bytes(TEMPLATE_ICON).expect("the template icon is a valid PNG");
         let monochrome_dotted = with_dot(&monochrome, true);
+        let monochrome_white = white_template(&monochrome);
+        let monochrome_white_dotted = white_template(&monochrome_dotted);
         Icons {
             plain,
             dotted,
             monochrome,
             monochrome_dotted,
+            monochrome_white,
+            monochrome_white_dotted,
             #[cfg(windows)]
             overlay: dot(32),
         }
     })
+}
+
+/// Windows uses the bitmap's colour; retain the template's anti-aliasing and cut-out ring.
+fn white_template(icon: &Image<'_>) -> Image<'static> {
+    let mut rgba = icon.rgba().to_vec();
+    for pixel in rgba.as_chunks_mut::<4>().0 {
+        pixel[..3].fill(255);
+    }
+    Image::new_owned(rgba, icon.width(), icon.height())
 }
 
 const RED: [u8; 3] = [0xe5, 0x48, 0x4d];
@@ -342,7 +389,7 @@ mod tests {
     fn template_assets_keep_transparency_and_the_unread_indicator() {
         let icons = icons();
         for count in [0, 1] {
-            let icon = icons.for_state(count, true);
+            let icon = icons.for_state(count, true, false);
             assert!(
                 icon.rgba()
                     .as_chunks::<4>()
@@ -360,12 +407,44 @@ mod tests {
             );
         }
         assert_ne!(
-            icons.for_state(0, true).rgba(),
-            icons.for_state(1, true).rgba()
+            icons.for_state(0, true, false).rgba(),
+            icons.for_state(1, true, false).rgba()
         );
         assert_ne!(
-            icons.for_state(0, false).rgba(),
-            icons.for_state(0, true).rgba()
+            icons.for_state(0, false, false).rgba(),
+            icons.for_state(0, true, false).rgba()
+        );
+    }
+
+    #[test]
+    fn windows_theme_changes_colour_without_changing_the_unread_mask() {
+        let icons = icons();
+        for count in [0, 1, 37] {
+            let light = icons.for_state(count, true, false);
+            let dark = icons.for_state(count, true, true);
+            assert_eq!(
+                (light.width(), light.height()),
+                (dark.width(), dark.height())
+            );
+            for (black, white) in light
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(dark.rgba().as_chunks::<4>().0)
+            {
+                assert_eq!(&black[..3], &[0; 3]);
+                assert_eq!(&white[..3], &[255; 3]);
+                assert_eq!(black[3], white[3]);
+            }
+            assert_eq!(
+                icons.for_state(count, false, false).rgba(),
+                icons.for_state(count, false, true).rgba(),
+            );
+        }
+        assert_ne!(
+            icons.for_state(0, true, true).rgba(),
+            icons.for_state(37, true, true).rgba(),
         );
     }
 }

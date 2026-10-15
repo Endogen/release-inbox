@@ -10,6 +10,8 @@ mod config;
 mod notifications;
 mod tray;
 mod window;
+#[cfg(windows)]
+mod windows_theme;
 
 use std::collections::HashSet;
 use std::sync::Mutex;
