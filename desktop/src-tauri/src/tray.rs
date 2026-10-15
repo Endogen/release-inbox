@@ -9,9 +9,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
-#[cfg(any(target_os = "macos", windows))]
-use crate::config;
-use crate::{AppState, window};
+use crate::{AppState, config, window};
 
 const TRAY: &str = "tray";
 const ICON: &[u8] = include_bytes!("../icons/64x64.png");
@@ -29,6 +27,14 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         starts_at_login(app),
         None::<&str>,
     )?;
+    let tray_only = CheckMenuItem::with_id(
+        app,
+        "tray-only",
+        "Show only in tray",
+        true,
+        window::uses_tray_only(app),
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(
         app,
         &[
@@ -37,6 +43,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &autostart,
+            &tray_only,
             &MenuItem::with_id(app, "server", "Change server…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
@@ -69,6 +76,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let _ = window::navigate(app, window::current_server(app).as_ref());
             }
             "autostart" => toggle_autostart(app, &autostart),
+            "tray-only" => toggle_tray_only(app, &tray_only),
             #[cfg(any(target_os = "macos", windows))]
             "monochrome" => toggle_monochrome(app, &monochrome),
             "server" => {
@@ -125,6 +133,31 @@ fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
     }
     // Native check items toggle before the callback; restore the saved value on failure.
     let _ = item.set_checked(uses_monochrome(app));
+}
+
+fn toggle_tray_only(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
+    let result = (|| -> Result<(), String> {
+        let state = app.state::<AppState>();
+        let mut current = state.config.lock().unwrap();
+        let mut updated = current.clone();
+        updated.tray_only = !updated.tray_only;
+        // Apply first, and restore the previous setting if applying or saving fails.
+        let result = window::set_tray_only(app, updated.tray_only)
+            .map_err(|error| error.to_string())
+            .and_then(|()| config::save(app, &updated));
+        if let Err(error) = result {
+            if let Err(restore_error) = window::set_tray_only(app, current.tray_only) {
+                eprintln!("Couldn't restore taskbar visibility: {restore_error}");
+            }
+            return Err(error);
+        }
+        *current = updated;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        eprintln!("Couldn't change taskbar visibility: {error}");
+    }
+    let _ = item.set_checked(window::uses_tray_only(app));
 }
 
 fn update_icon(app: &AppHandle, count: u32) -> tauri::Result<()> {

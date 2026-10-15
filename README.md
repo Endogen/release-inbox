@@ -167,6 +167,11 @@ newer: older servers don't send it notifications.
   (on macOS also the Dock icon); its menu has *Sync now*, *Reload* (for example after the
   server was unreachable) and *Quit*. A dot on the tray icon and on the taskbar button (a count
   on the macOS Dock) shows that the inbox has entries.
+- *Show only in tray* hides the Dock icon on macOS or the taskbar button on Windows and
+  Linux, even while the window is open. Use the tray icon or *Open Releases* in its menu
+  to bring the window back. The choice applies immediately and is saved for the next launch;
+  uncheck it to restore the Dock/taskbar icon. Linux desktop environments may ignore this
+  taskbar hint, and need system tray support to keep the app accessible.
 - On macOS and Windows, *Monochrome icon* in the tray menu switches to a rocket that follows
   the menu bar or taskbar's light or dark appearance, including its unread dot. Windows uses
   the system/taskbar colour mode, even when apps use a different mode, and updates while the

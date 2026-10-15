@@ -15,6 +15,8 @@ pub struct Config {
     pub tray_hint_shown: bool,
     /// Use a monochrome tray icon on macOS and Windows.
     pub monochrome_tray_icon: bool,
+    /// Hide the Dock/taskbar icon while keeping the app accessible from its tray icon.
+    pub tray_only: bool,
 }
 
 impl Config {
@@ -124,16 +126,19 @@ mod tests {
         assert_eq!(config.server_url().unwrap().as_str(), "https://a.example/");
         assert!(!config.tray_hint_shown);
         assert!(!config.monochrome_tray_icon);
+        assert!(!config.tray_only);
     }
 
     #[test]
-    fn remembers_monochrome_without_losing_server_settings() {
+    fn remembers_tray_preferences_without_losing_server_settings() {
         let mut config = Config::default();
         config.set_server_url(&Url::parse("https://a.example/").unwrap());
         config.monochrome_tray_icon = true;
+        config.tray_only = true;
         let saved = serde_json::to_string(&config).unwrap();
         let restored: Config = serde_json::from_str(&saved).unwrap();
         assert!(restored.monochrome_tray_icon);
+        assert!(restored.tray_only);
         assert_eq!(restored.server_url(), config.server_url());
     }
 }

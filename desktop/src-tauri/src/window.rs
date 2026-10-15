@@ -48,11 +48,16 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
     };
     let navigation_app = app.clone();
     let new_window_app = app.clone();
+    let tray_only = uses_tray_only(app);
+    #[cfg(target_os = "macos")]
+    set_tray_only(app, tray_only)?;
     let window = WebviewWindowBuilder::new(app, MAIN, start)
         .title("Releases")
         .inner_size(1280.0, 820.0)
         .min_inner_size(380.0, 520.0)
         .visible(visible)
+        // macOS uses the application's activation policy instead (see above).
+        .skip_taskbar(tray_only)
         // The page keeps receiving notifications while the window is in the tray. Only macOS
         // lets the app turn off the throttling of hidden pages.
         .background_throttling(BackgroundThrottlingPolicy::Disabled)
@@ -180,6 +185,42 @@ pub fn navigate(app: &AppHandle, server: Option<&Url>) -> tauri::Result<()> {
     window.navigate(target)?;
     show(app);
     Ok(())
+}
+
+pub fn uses_tray_only(app: &AppHandle) -> bool {
+    app.state::<AppState>().config.lock().unwrap().tray_only
+}
+
+/// Changes Dock/taskbar presence without closing the window or affecting the tray.
+pub fn set_tray_only(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let window = app.get_webview_window(MAIN);
+        let visible = window
+            .as_ref()
+            .is_some_and(|w| w.is_visible().unwrap_or(false));
+        let focused = window
+            .as_ref()
+            .is_some_and(|w| w.is_focused().unwrap_or(false));
+        app.set_activation_policy(if enabled {
+            tauri::ActivationPolicy::Accessory
+        } else {
+            tauri::ActivationPolicy::Regular
+        })?;
+        // Switching application policies can hide its windows. Preserve the open window,
+        // but leave a window that was already in the tray hidden.
+        if visible && let Some(window) = window {
+            window.show()?;
+            if focused {
+                window.set_focus()?;
+            }
+        }
+        Ok(())
+    }
+    #[cfg(not(target_os = "macos"))]
+    app.get_webview_window(MAIN)
+        .ok_or(tauri::Error::WindowNotFound)?
+        .set_skip_taskbar(enabled)
 }
 
 pub fn show(app: &AppHandle) {
