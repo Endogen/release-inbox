@@ -28,6 +28,15 @@ fn is_same_origin(url: &Url, other: &Url) -> bool {
     url.origin() == other.origin()
 }
 
+fn is_setup_page(url: &Url) -> bool {
+    let setup = setup_url();
+    // Custom schemes have opaque origins, so two tauri:// URLs never compare equal
+    // through Url::origin(). Match the bundled page's scheme, host and port directly.
+    url.scheme() == setup.scheme()
+        && url.host_str() == setup.host_str()
+        && url.port() == setup.port()
+}
+
 /// Creates the main window; with `visible` false it loads in the background, for the tray.
 pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Result<()> {
     let start = match server {
@@ -69,7 +78,7 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
 /// redirect from http to https is followed, and the https address becomes the server's.
 /// Anything else, such as a release on github.com, opens in the browser.
 fn may_show(app: &AppHandle, url: &Url) -> bool {
-    if url.scheme() == "about" || is_same_origin(url, &setup_url()) {
+    if url.scheme() == "about" || is_setup_page(url) {
         return true;
     }
     let server = current_server(app);
@@ -241,6 +250,18 @@ mod tests {
             &server
         ));
         assert!(!is_same_origin(&url("http://releases.example/"), &server));
+    }
+
+    #[test]
+    fn accepts_only_the_bundled_setup_origin() {
+        let setup = setup_url();
+        assert!(is_setup_page(&setup));
+        assert!(is_setup_page(&setup.join("index.html?reload=1").unwrap()));
+        assert!(!is_setup_page(&url("https://localhost/index.html")));
+        assert!(!is_setup_page(&url("tauri://example.com/index.html")));
+        let mut other_port = setup.clone();
+        other_port.set_port(Some(1234)).unwrap();
+        assert!(!is_setup_page(&other_port));
     }
 
     #[test]

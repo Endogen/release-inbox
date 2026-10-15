@@ -7,6 +7,9 @@ edition = "2024"
 rust-version = "1.88"
 publish = false
 
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
 [build-dependencies]
 tauri-build = "2"
 
