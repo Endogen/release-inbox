@@ -1,6 +1,6 @@
 [package]
 name = "ghr-desktop"
-version = "0.5.1"
+version = "0.6.0"
 description = "Desktop app for the GitHub release inbox"
 authors = ["Endogen"]
 edition = "2024"
