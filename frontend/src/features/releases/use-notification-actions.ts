@@ -99,9 +99,7 @@ function notifyFailure(message: string, error: unknown): void {
     title: message,
     body: error instanceof Error ? error.message : "Try again in the app.",
     url: "/inbox",
-    tag: "action-failed",
-    unread: null,
     release_ids: [],
     repository_id: null,
-  }).catch(() => undefined)
+  })
 }

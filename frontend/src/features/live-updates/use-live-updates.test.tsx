@@ -138,7 +138,8 @@ describe("useLiveUpdates", () => {
     act(() => latest().emit("notification", "not json"))
     act(() => latest().emit("notification", JSON.stringify(notification)))
 
-    expect(desktop.showDesktopNotification.mock.calls).toEqual([[notification]])
+    const { tag: _tag, unread: _unread, ...forDesktop } = notification
+    expect(desktop.showDesktopNotification.mock.calls).toEqual([[forDesktop]])
   })
 
   it("leaves notifications to browser push in the browser", () => {

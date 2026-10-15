@@ -3,8 +3,9 @@ import { useEffect } from "react"
 import { isDesktop, setDesktopUnreadCount } from "@/lib/desktop"
 
 /**
- * Shows ``count`` on the icon of the installed app (in the desktop app: on the tray icon); 0 removes it, ``undefined`` (not known yet)
- * leaves it as it is. Removes it when the component unmounts, e.g. on signing out.
+ * Shows ``count`` on the icon of the installed app, or the tray icon of the desktop app; 0
+ * removes it, ``undefined`` (not known yet) leaves it as it is. Removes it when the component
+ * unmounts, e.g. on signing out.
  */
 export function useAppBadge(count: number | undefined): void {
   useEffect(() => {
@@ -15,7 +16,7 @@ export function useAppBadge(count: number | undefined): void {
 
 function setAppBadge(count: number): void {
   if (isDesktop()) {
-    setDesktopUnreadCount(count).catch(() => undefined)
+    void setDesktopUnreadCount(count)
     return
   }
   if (!("setAppBadge" in navigator)) return

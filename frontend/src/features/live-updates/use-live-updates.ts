@@ -5,20 +5,9 @@ import { authKeys } from "@/features/auth/api"
 import { releaseKeys } from "@/features/releases/query-keys"
 import { syncKeys } from "@/features/sync/api"
 import type { SyncStatus } from "@/lib/api/types"
-import { isDesktop, readDesktopNotification, showDesktopNotification } from "@/lib/desktop"
+import { isDesktop, showDesktopNotification } from "@/lib/desktop"
 
-/** Reads the ``in_progress`` flag of a ``sync-status`` event; ``undefined`` if malformed. */
-function readInProgress(data: string): boolean | undefined {
-  try {
-    const payload: unknown = JSON.parse(data)
-    if (payload && typeof payload === "object" && "in_progress" in payload) {
-      return typeof payload.in_progress === "boolean" ? payload.in_progress : undefined
-    }
-  } catch {
-    // Not JSON; ignore the event like any other unknown message.
-  }
-  return undefined
-}
+import { readInProgress, readNotification } from "./events"
 
 const INITIAL_RETRY_MS = 2_000
 const MAX_RETRY_MS = 60_000
@@ -71,8 +60,8 @@ export function useLiveUpdates(enabled: boolean): void {
       })
 
       source.addEventListener("notification", (event: MessageEvent<string>) => {
-        const notification = readDesktopNotification(event.data)
-        if (notification) void showDesktopNotification(notification).catch(() => undefined)
+        const notification = readNotification(event.data)
+        if (notification) void showDesktopNotification(notification)
       })
 
       source.addEventListener("error", () => {

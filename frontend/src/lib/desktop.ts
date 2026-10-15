@@ -3,7 +3,7 @@
  * desktop shows notifications and the inbox count in the tray instead of the browser, and
  * the tray's menu and clicked notifications ask the web app to act.
  */
-import { invoke, isTauri } from "@tauri-apps/api/core"
+import { invoke, isTauri, type InvokeArgs } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 
 /** Whether the app runs inside the desktop app. */
@@ -11,46 +11,37 @@ export function isDesktop(): boolean {
   return isTauri()
 }
 
-/** A ``notification`` event of the server's event stream. */
+/** A notification for the desktop to show. */
 export interface DesktopNotification {
   title: string
   body: string
   /** Where it leads inside the app, e.g. ``/inbox?release=1``. */
   url: string
-  tag: string
-  unread: number | null
+  /** The releases it is about; the desktop adds buttons that act on them. */
   release_ids: number[]
+  /** Set if all of them belong to one repository. */
   repository_id: number | null
 }
 
-/** Reads a ``notification`` event; ``undefined`` if malformed. */
-export function readDesktopNotification(data: string): DesktopNotification | undefined {
+function reportFailure(what: string, error: unknown): void {
+  console.warn(`The desktop app couldn't ${what}:`, error)
+}
+
+/** Calls the desktop; nothing on the page waits for it, so a failure is only logged. */
+async function call(command: string, args: InvokeArgs): Promise<void> {
   try {
-    const payload: unknown = JSON.parse(data)
-    if (
-      payload &&
-      typeof payload === "object" &&
-      "title" in payload &&
-      typeof payload.title === "string" &&
-      "body" in payload &&
-      typeof payload.body === "string" &&
-      "url" in payload &&
-      typeof payload.url === "string"
-    ) {
-      return payload as DesktopNotification
-    }
-  } catch {
-    // Not JSON; ignore it like any other unknown message.
+    await invoke(command, args)
+  } catch (error) {
+    reportFailure(command.replaceAll("_", " "), error)
   }
-  return undefined
 }
 
 export function showDesktopNotification(notification: DesktopNotification): Promise<void> {
-  return invoke("show_notification", { notification })
+  return call("show_notification", { notification })
 }
 
 export function setDesktopUnreadCount(count: number): Promise<void> {
-  return invoke("set_unread_count", { count })
+  return call("set_unread_count", { count })
 }
 
 /** A button clicked on a notification about releases. */
@@ -78,10 +69,14 @@ export function onDesktopEvent<E extends keyof DesktopEvents>(
 ): () => void {
   let stopped = false
   let unlisten: (() => void) | undefined
-  void listen<DesktopEvents[E]>(event, ({ payload }) => handler(payload)).then((stop) => {
-    if (stopped) stop()
-    else unlisten = stop
-  })
+  listen<DesktopEvents[E]>(event, ({ payload }) => handler(payload)).then(
+    (stop) => {
+      // Stopped before listening started: stop right away.
+      if (stopped) stop()
+      else unlisten = stop
+    },
+    (error: unknown) => reportFailure(`listen to ${event}`, error)
+  )
   return () => {
     stopped = true
     unlisten?.()
