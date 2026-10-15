@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "setup",
+  "description": "The bundled page that asks for the server's address. The server's own pages get their permissions at runtime, for the address the user entered.",
+  "windows": ["main"],
+  "permissions": ["core:default", "allow-server-url", "allow-check-server-url", "allow-connect"]
+}

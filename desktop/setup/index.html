@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Releases</title>
+    <link rel="stylesheet" href="setup.css" />
+    <script type="module" src="setup.js"></script>
+  </head>
+  <body>
+    <main>
+      <img src="icon.svg" alt="" width="56" height="56" />
+      <h1>Connect to your server</h1>
+      <p class="lead">
+        Releases runs on your own server. Enter its address to open your inbox here; you sign
+        in as usual.
+      </p>
+      <form id="connect" novalidate>
+        <label for="url">Server address</label>
+        <input
+          id="url"
+          name="url"
+          type="text"
+          inputmode="url"
+          autocomplete="url"
+          spellcheck="false"
+          placeholder="releases.example.com"
+          required
+          autofocus
+        />
+        <p id="error" class="error" role="alert" hidden></p>
+        <div class="actions">
+          <button id="cancel" type="button" class="secondary" hidden>Cancel</button>
+          <button id="submit" type="submit">Connect</button>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>
