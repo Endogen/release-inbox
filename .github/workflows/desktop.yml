@@ -7,13 +7,15 @@ on:
     paths:
       - desktop/**
       - .github/workflows/desktop.yml
+  release:
+    types: [published]
 
 permissions:
   contents: read
 
 concurrency:
-  group: desktop-${{ github.ref }}
-  cancel-in-progress: true
+  group: desktop-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 jobs:
   build:
@@ -49,6 +51,24 @@ jobs:
         with:
           components: clippy, rustfmt
           targets: ${{ matrix.targets }}
+      - name: Check the release version
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node <<'JS'
+          const { execFileSync } = require('node:child_process');
+          const metadata = JSON.parse(execFileSync('cargo', [
+            'metadata', '--manifest-path', 'src-tauri/Cargo.toml',
+            '--no-deps', '--locked', '--format-version', '1',
+          ], { encoding: 'utf8' }));
+          const version = metadata.packages.find(pkg => pkg.name === 'ghr-desktop').version;
+          const tag = process.env.RELEASE_TAG;
+          if (tag !== version && tag !== `v${version}`) {
+            throw new Error(`Release tag ${tag} does not match desktop version ${version}. Update desktop/src-tauri/Cargo.toml and Cargo.lock before tagging a release.`);
+          }
+          JS
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
@@ -59,10 +79,17 @@ jobs:
         working-directory: desktop/src-tauri
       - run: cargo test
         working-directory: desktop/src-tauri
-      # Installers only for main: pull requests stop at the checks above.
-      - if: github.event_name == 'push'
-        run: npm run build -- ${{ matrix.build-args }}
-      - if: github.event_name == 'push'
+      # Release events check out the tagged commit; pull requests only run checks.
+      - name: Build desktop installers
+        if: github.event_name == 'push' || github.event_name == 'release'
+        shell: bash
+        run: |
+          # A restored Rust cache may contain bundles from an older version.
+          if [[ -d src-tauri/target ]]; then
+            find src-tauri/target -type d -path '*/release/bundle' -prune -exec rm -rf {} +
+          fi
+          npm run build -- ${{ matrix.build-args }}
+      - if: github.event_name == 'push' || github.event_name == 'release'
         uses: actions/upload-artifact@v7
         with:
           name: releases-desktop-${{ runner.os }}
@@ -74,3 +101,36 @@ jobs:
             desktop/src-tauri/target/**/release/bundle/*/*.deb
             desktop/src-tauri/target/**/release/bundle/*/*.rpm
           if-no-files-found: error
+
+  publish:
+    name: Attach desktop installers to the release
+    if: github.event_name == 'release'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: releases-desktop-*
+          path: installers
+          merge-multiple: true
+      - name: Upload the installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          installers=()
+          while IFS= read -r -d '' installer; do
+            installers+=("$installer")
+          done < <(find installers -type f \( \
+            -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o \
+            -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+          \) -print0)
+          if (( ${#installers[@]} == 0 )); then
+            echo 'No desktop installers were downloaded.' >&2
+            exit 1
+          fi
+          gh release upload --repo "$GH_REPO" --clobber -- "$RELEASE_TAG" "${installers[@]}"

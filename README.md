@@ -209,10 +209,18 @@ npm run build   # installers in src-tauri/target/release/bundle/
 ```
 
 The app's version is the one in `desktop/src-tauri/Cargo.toml`. For every push to `main`,
-GitHub Actions builds the installers for Windows (`.msi`, `.exe`), macOS (`.dmg`, for Apple
-silicon and Intel) and Linux (`.AppImage`, `.deb`, `.rpm`) and keeps them as artifacts of the
-workflow run. The builds are not signed: Windows SmartScreen and macOS Gatekeeper warn before
-the first start.
+GitHub Actions builds the installers for Windows (`.msi`, `.exe`), macOS (one universal `.dmg`
+for Apple silicon and Intel) and Linux (`.AppImage`, `.deb`, `.rpm`) and keeps them as artifacts
+of the workflow run.
+
+Publishing a GitHub release or prerelease also rebuilds the installers from its tagged commit.
+Once all three platforms pass their checks and builds, the workflow attaches the installers
+to that release's **Assets**. Before tagging, update the desktop version in `Cargo.toml` and
+`Cargo.lock`; the release tag must match it, with an optional `v` prefix (for example `v0.5.2`).
+Saving a draft does not start a build. A failed run can be rerun from Actions; uploads replace
+assets with matching filenames and leave other release attachments alone.
+
+The builds are not signed: Windows SmartScreen and macOS Gatekeeper warn before the first start.
 
 ## Local development
 
