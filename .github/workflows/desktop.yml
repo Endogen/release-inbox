@@ -3,7 +3,6 @@ name: Desktop
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
     paths:
       - desktop/**
@@ -22,8 +21,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The oldest supported Ubuntu, so the AppImage runs on older distributions too.
-        os: [ubuntu-22.04, macos-latest, windows-latest]
+        include:
+          # The oldest supported Ubuntu, so the AppImage runs on older distributions too.
+          - os: ubuntu-22.04
+          - os: windows-latest
+          # One app for Apple silicon and Intel Macs.
+          - os: macos-latest
+            targets: aarch64-apple-darwin, x86_64-apple-darwin
+            build-args: --target universal-apple-darwin
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -43,6 +48,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+          targets: ${{ matrix.targets }}
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/src-tauri
@@ -53,15 +59,18 @@ jobs:
         working-directory: desktop/src-tauri
       - run: cargo test
         working-directory: desktop/src-tauri
-      - run: npx tauri build
-      - uses: actions/upload-artifact@v6
+      # Installers only for main: pull requests stop at the checks above.
+      - if: github.event_name == 'push'
+        run: npm run build -- ${{ matrix.build-args }}
+      - if: github.event_name == 'push'
+        uses: actions/upload-artifact@v7
         with:
           name: releases-desktop-${{ runner.os }}
           path: |
-            desktop/src-tauri/target/release/bundle/*/*.msi
-            desktop/src-tauri/target/release/bundle/*/*.exe
-            desktop/src-tauri/target/release/bundle/*/*.dmg
-            desktop/src-tauri/target/release/bundle/*/*.AppImage
-            desktop/src-tauri/target/release/bundle/*/*.deb
-            desktop/src-tauri/target/release/bundle/*/*.rpm
+            desktop/src-tauri/target/**/release/bundle/*/*.msi
+            desktop/src-tauri/target/**/release/bundle/*/*.exe
+            desktop/src-tauri/target/**/release/bundle/*/*.dmg
+            desktop/src-tauri/target/**/release/bundle/*/*.AppImage
+            desktop/src-tauri/target/**/release/bundle/*/*.deb
+            desktop/src-tauri/target/**/release/bundle/*/*.rpm
           if-no-files-found: error
