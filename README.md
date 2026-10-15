@@ -80,8 +80,9 @@ options apply to the device you set them on.
 - **Installable** as an app on desktop and phones, with the number of inbox entries on its
   icon. The layout adapts from phones to wide screens.
 - **Desktop app** for Windows, macOS and Linux. It shows your server's app in a native window,
-  keeps running in the system tray when you close it and shows notifications natively;
-  clicking one opens the release. See [Desktop app](#desktop-app).
+  keeps running in the system tray when you close it, can start at login and shows
+  notifications natively, with buttons to mark as read, snooze or mute. See
+  [Desktop app](#desktop-app).
 
 ## Architecture
 
@@ -164,10 +165,20 @@ macOS and Linux), so it doesn't bundle a browser.
 - Closing the window keeps the app in the system tray. Click the tray icon to open it again;
   its menu has _Sync now_ and _Quit_. A dot on the tray icon (and the count on the macOS Dock)
   shows that the inbox has entries.
+- _Start at login_ in the tray menu adds the app to the system's login items (the registry's
+  `Run` key on Windows, a Launch Agent on macOS, an autostart entry on Linux). Started that way,
+  it waits in the tray with the window hidden (`--hidden`) and still notifies you.
 - Notifications arrive over the app's live-update connection (`/api/events?notifications=true`)
   and follow the same rules as the other channels: mutes, pre-releases, _Breaking only_. They
   need no setup on the server, but only reach a desktop app that is running; there's no queue
   for one that is offline. Clicking a notification opens its release.
+- Notifications about releases have buttons: _Mark as read_, _Snooze until tomorrow_ (9:00) and
+  _Mute repository_. They act on exactly the releases the notification is about; one about
+  releases of several repositories has no _Mute_. The web app does the work with your session
+  (the desktop never calls the server itself) and applies it right away, with _Undo_ in the
+  app's toast. A failure is shown as a notification while the window isn't in front. On
+  Windows the buttons only work while the notification is on screen, not from the Action
+  Center; macOS shows them in an _Options_ menu.
 - Links that leave the app, such as releases on github.com, open in your browser. Only pages of
   the server you entered can use the desktop functions.
 
@@ -175,8 +186,9 @@ macOS and Linux), so it doesn't bundle a browser.
 | ----------------------------- | --------------------------------------------------------------- |
 | `desktop/setup`               | The page that asks for the server's address                     |
 | `src-tauri/src/window.rs`     | The main window, close to tray, links, the server's permissions |
-| `src-tauri/src/tray.rs`       | Tray icon, its menu and the inbox dot                           |
+| `src-tauri/src/tray.rs`       | Tray icon, its menu (with _Start at login_) and the inbox dot   |
 | `src-tauri/src/commands.rs`   | What the pages can call: connect, notifications, inbox count    |
+| `src-tauri/src/actions.rs`    | The buttons on notifications, handed to the web app to run      |
 | `src-tauri/src/config.rs`     | The app's settings (server address) in its config folder        |
 | `frontend/src/lib/desktop.ts` | The web app's side: detects the desktop app and talks to it     |
 

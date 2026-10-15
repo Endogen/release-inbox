@@ -2,9 +2,10 @@
 //! menu. It stays after the window is closed, until the user quits.
 
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 
 use crate::window;
 
@@ -15,12 +16,21 @@ const ICON: &[u8] = include_bytes!("../icons/64x64.png");
 pub const SYNC_EVENT: &str = "desktop://sync";
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    let autostart = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Start at login",
+        true,
+        starts_at_login(app),
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(
         app,
         &[
             &MenuItem::with_id(app, "open", "Open Releases", true, None::<&str>)?,
             &MenuItem::with_id(app, "sync", "Sync now", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
+            &autostart,
             &MenuItem::with_id(app, "server", "Change server…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
@@ -31,11 +41,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .tooltip("Releases")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
+        .on_menu_event(move |app, event| match event.id().as_ref() {
             "open" => window::show(app),
             "sync" => {
                 let _ = app.emit_to(window::MAIN, SYNC_EVENT, ());
             }
+            "autostart" => toggle_autostart(app, &autostart),
             "server" => {
                 let _ = window::navigate(app, None);
             }
@@ -54,6 +65,22 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
     Ok(())
+}
+
+fn starts_at_login(app: &AppHandle) -> bool {
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// Adds or removes the login item, which starts the app in the tray. The check mark shows
+/// what the system has afterwards, also if the change failed.
+fn toggle_autostart(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
+    let autostart = app.autolaunch();
+    let _ = if starts_at_login(app) {
+        autostart.disable()
+    } else {
+        autostart.enable()
+    };
+    let _ = item.set_checked(starts_at_login(app));
 }
 
 /// Shows the number of inbox entries: in the tooltip, as a dot on the tray icon and on the

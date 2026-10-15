@@ -53,11 +53,22 @@ export function setDesktopUnreadCount(count: number): Promise<void> {
   return invoke("set_unread_count", { count })
 }
 
+/** A button clicked on a notification about releases. */
+export interface DesktopAction {
+  action: "mark-read" | "snooze" | "mute"
+  release_ids: number[]
+  /** Set if all of them belong to one repository; muting needs it. */
+  repository_id: number | null
+  /** The notification's title, such as the repository's name. */
+  title: string | null
+}
+
 type DesktopEvents = {
   /** The tray's "Sync now". */
   "desktop://sync": null
   /** A clicked notification: the path inside the app it leads to. */
   "desktop://navigate": string
+  "desktop://action": DesktopAction
 }
 
 /** Calls ``handler`` for every ``event`` from the desktop; returns a function that stops. */

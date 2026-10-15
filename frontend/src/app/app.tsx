@@ -11,6 +11,7 @@ import { useCurrentUser } from "@/features/auth/api"
 import { useLiveUpdates } from "@/features/live-updates/use-live-updates"
 import { useNotificationNavigation } from "@/features/notifications/use-notification-navigation"
 import { DeferredActionsProvider } from "@/features/releases/deferred-actions/provider"
+import { DesktopNotificationActions } from "@/features/releases/desktop-notification-actions"
 import { InboxPage } from "@/features/releases/inbox-page"
 import { DesktopTraySync } from "@/features/sync/desktop-tray-sync"
 import { ThemeProvider } from "@/features/theme/provider"
@@ -80,6 +81,7 @@ function AuthenticatedApp() {
   return (
     <>
       <DesktopTraySync />
+      <DesktopNotificationActions />
       <Routes>
         <Route path="/:view" element={<ViewRoute username={user.username} />} />
         <Route path="*" element={<Navigate to="/inbox" replace />} />

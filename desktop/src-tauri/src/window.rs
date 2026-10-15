@@ -29,7 +29,12 @@ fn is_same_origin(url: &Url, other: &Url) -> bool {
     url.origin() == other.origin()
 }
 
-pub fn create(app: &AppHandle, server: Option<&Url>) -> tauri::Result<WebviewWindow> {
+/// Creates the main window; with `visible` false it loads in the background, for the tray.
+pub fn create(
+    app: &AppHandle,
+    server: Option<&Url>,
+    visible: bool,
+) -> tauri::Result<WebviewWindow> {
     let start = match server {
         Some(server) => {
             allow_server(app, server)?;
@@ -43,6 +48,7 @@ pub fn create(app: &AppHandle, server: Option<&Url>) -> tauri::Result<WebviewWin
         .title("Releases")
         .inner_size(1280.0, 820.0)
         .min_inner_size(380.0, 520.0)
+        .visible(visible)
         // Links that leave the app, such as a release on github.com, open in the browser.
         .on_navigation(move |url| {
             let stays = is_same_origin(url, &setup_url())

@@ -106,7 +106,8 @@ export function useReadme(repositoryId: number) {
 
 export interface ReleaseActionInput {
   releaseId: number
-  repositoryId: number
+  /** The release's repository; only needed to remove its entry with ``leaves``. */
+  repositoryId?: number
   /** The view the repository's entry leaves; it's removed from that list right away. */
   leaves: View | null
 }
@@ -120,7 +121,7 @@ function useReleaseMutation<Input extends ReleaseActionInput>(
     mutationFn: request,
     meta: { errorMessage },
     onMutate: async ({ repositoryId, leaves }) => {
-      if (leaves === null) return
+      if (leaves === null || repositoryId === undefined) return
       await queryClient.cancelQueries({ queryKey: releaseKeys.lists() })
       removeFromList(queryClient, leaves, repositoryId)
     },
