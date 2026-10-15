@@ -10,7 +10,7 @@ use tauri::{AppHandle, Manager, Url};
 #[serde(default)]
 pub struct Config {
     /// The server's address, as returned by [`normalize_server_url`].
-    pub server_url: Option<String>,
+    server_url: Option<String>,
     /// Whether the user was told once that closing the window keeps the app in the tray.
     pub tray_hint_shown: bool,
 }
@@ -20,6 +20,10 @@ impl Config {
         self.server_url
             .as_deref()
             .and_then(|url| normalize_server_url(url).ok())
+    }
+
+    pub fn set_server_url(&mut self, server: &Url) {
+        self.server_url = Some(server.to_string());
     }
 }
 
@@ -47,6 +51,9 @@ pub fn save(app: &AppHandle, config: &Config) -> Result<(), String> {
 
 /// The origin of the server the user typed in, with a trailing slash: `releases.example.com`
 /// becomes `https://releases.example.com/`. Paths are dropped, as the app runs at the root.
+///
+/// The host must be a plain host name or an IPv4 address: the origin becomes a URL pattern
+/// for the server's permissions, where characters such as `*` would match other hosts.
 pub fn normalize_server_url(input: &str) -> Result<Url, String> {
     let input = input.trim();
     if input.is_empty() {
@@ -61,8 +68,10 @@ pub fn normalize_server_url(input: &str) -> Result<Url, String> {
     if !matches!(url.scheme(), "https" | "http") {
         return Err("The address must start with https:// or http://.".into());
     }
-    if url.host_str().is_none_or(str::is_empty) {
-        return Err("The address needs a host name.".into());
+    let host = url.host_str().unwrap_or_default();
+    let plain = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '.');
+    if host.is_empty() || !host.chars().all(plain) {
+        return Err("The address needs a host name, such as releases.example.com.".into());
     }
     Url::parse(&url.origin().ascii_serialization())
         .map_err(|_| "That isn't a valid address.".to_owned())
@@ -93,6 +102,17 @@ mod tests {
         assert!(normalized("").is_err());
         assert!(normalized("ftp://example.com").is_err());
         assert!(normalized("file:///etc/passwd").is_err());
+    }
+
+    #[test]
+    fn accepts_only_plain_host_names() {
+        assert_eq!(
+            normalized("192.168.1.5:8000").unwrap(),
+            "https://192.168.1.5:8000/"
+        );
+        assert!(normalized("*.example.com").is_err());
+        assert!(normalized("a(b.example").is_err());
+        assert!(normalized("http://[::1]:5173").is_err());
     }
 
     #[test]

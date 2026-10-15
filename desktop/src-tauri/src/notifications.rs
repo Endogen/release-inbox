@@ -1,19 +1,92 @@
-//! The buttons on release notifications. The desktop doesn't call the server itself: a click
-//! asks the web app to act with its signed-in session, through [`ACTION_EVENT`].
+//! Native notifications from the server: showing them, opening the release a click is about,
+//! and the buttons on notifications about releases. The desktop doesn't call the server
+//! itself: a button asks the web app to act with its signed-in session, through
+//! [`ACTION_EVENT`].
 
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tauri_plugin_notification::{Action, ActionType};
+use tauri::{AppHandle, Emitter};
+use tauri_plugin_notification::{Action, ActionPerformed, ActionType, NotificationExt};
 
+use crate::window;
+
+/// Asks the web app to show a path inside it, such as `/inbox?release=1`.
+const NAVIGATE_EVENT: &str = "desktop://navigate";
 /// Asks the web app to act on the releases of a notification.
-pub const ACTION_EVENT: &str = "desktop://action";
+const ACTION_EVENT: &str = "desktop://action";
 
-/// The notification's `extra`s that hold the releases it is about and, if they all belong to
-/// one, their repository.
-pub const RELEASE_IDS_EXTRA: &str = "release_ids";
-pub const REPOSITORY_ID_EXTRA: &str = "repository_id";
+/// The notification's `extra`s: where a click leads, the releases it is about and, if they
+/// all belong to one, their repository.
+const URL_EXTRA: &str = "url";
+const RELEASE_IDS_EXTRA: &str = "release_ids";
+const REPOSITORY_ID_EXTRA: &str = "repository_id";
+
+/// A `notification` event of the server's event stream, as far as the desktop uses it.
+#[derive(Debug, Deserialize)]
+pub struct ServerNotification {
+    title: String,
+    body: String,
+    /// Where it leads inside the app, e.g. `/inbox?release=1`.
+    url: String,
+    /// The releases it is about; its buttons act on them.
+    #[serde(default)]
+    release_ids: Vec<i64>,
+    /// Set if all of them belong to one repository.
+    #[serde(default)]
+    repository_id: Option<i64>,
+}
+
+/// Shows a notification of the server; one about releases gets buttons that act on them.
+pub fn show(
+    app: &AppHandle,
+    notification: ServerNotification,
+) -> tauri_plugin_notification::Result<()> {
+    let mut builder = app
+        .notification()
+        .builder()
+        .title(notification.title)
+        .body(notification.body)
+        .extra(URL_EXTRA, notification.url);
+    if let Some(action_type) = action_type_id(&notification.release_ids, notification.repository_id)
+    {
+        builder = builder
+            .action_type_id(action_type)
+            .extra(RELEASE_IDS_EXTRA, notification.release_ids)
+            .extra(REPOSITORY_ID_EXTRA, notification.repository_id);
+    }
+    builder.show()
+}
+
+/// Sets up the buttons and what clicks do; before the first notification is shown.
+pub fn register(app: &AppHandle) -> tauri_plugin_notification::Result<()> {
+    let notifications = app.notification();
+    notifications.register_action_types(action_types())?;
+    let handle = app.clone();
+    notifications.on_action(move |action| clicked(&handle, action))
+}
+
+/// A click on a notification opens the release it is about; a click on one of its buttons
+/// asks the web app to act on the releases, in the background.
+fn clicked(app: &AppHandle, action: &ActionPerformed) {
+    let notification = action.notification();
+    if action.action_id() == "tap" {
+        window::show(app);
+        let url = notification.and_then(|notification| notification.extra().get(URL_EXTRA));
+        if let Some(url) = url.and_then(Value::as_str) {
+            let _ = app.emit_to(window::MAIN, NAVIGATE_EVENT, url);
+        }
+    } else if let Some(event) = notification.and_then(|notification| {
+        event(
+            action.action_id(),
+            notification.extra(),
+            notification.title(),
+        )
+    }) {
+        let _ = app.emit_to(window::MAIN, ACTION_EVENT, event);
+    }
+}
 
 const MARK_READ: &str = "mark-read";
 const SNOOZE: &str = "snooze";
@@ -25,7 +98,7 @@ const REPOSITORY_RELEASES: &str = "repository-releases";
 const RELEASES: &str = "releases";
 
 /// The action types the notifications refer to; registered once at startup.
-pub fn action_types() -> Vec<ActionType> {
+fn action_types() -> Vec<ActionType> {
     let mark_read = || Action::builder(MARK_READ, "Mark as read").build();
     let snooze = || Action::builder(SNOOZE, "Snooze until tomorrow").build();
     vec![
@@ -43,7 +116,7 @@ pub fn action_types() -> Vec<ActionType> {
 }
 
 /// The action type of a notification about `release_ids`; `None` if it isn't about releases.
-pub fn action_type_id(release_ids: &[i64], repository_id: Option<i64>) -> Option<&'static str> {
+fn action_type_id(release_ids: &[i64], repository_id: Option<i64>) -> Option<&'static str> {
     match (release_ids.is_empty(), repository_id) {
         (true, _) => None,
         (false, Some(_)) => Some(REPOSITORY_RELEASES),
@@ -53,7 +126,7 @@ pub fn action_type_id(release_ids: &[i64], repository_id: Option<i64>) -> Option
 
 /// The payload of an [`ACTION_EVENT`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ActionEvent {
+struct ActionEvent {
     action: &'static str,
     release_ids: Vec<i64>,
     repository_id: Option<i64>,
@@ -63,7 +136,7 @@ pub struct ActionEvent {
 
 /// What the web app should do for a click on the button `action_id` of a notification with
 /// `extra`; `None` for anything that isn't one of the buttons above.
-pub fn event(
+fn event(
     action_id: &str,
     extra: &HashMap<String, Value>,
     title: Option<&str>,
