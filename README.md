@@ -65,10 +65,10 @@ options apply to the device you set them on.
   footnotes, light/dark logos, and relative images in READMEs of private repositories.
 - **Search** across repositories, release names, tags and notes.
 - **Star counts** next to each repository, refreshed daily.
-- **Notifications where you want them.** Browser push, [ntfy](https://ntfy.sh) and Telegram.
-  Every repository you watch notifies you, including ones you start watching later; mute a
-  repository with the bell on one of its releases (or `m`), or only hear about releases with
-  breaking changes.
+- **Notifications where you want them.** Browser push, [ntfy](https://ntfy.sh), Telegram and
+  the desktop app. Every repository you watch notifies you, including ones you start watching
+  later; mute a repository with the bell on one of its releases (or `m`), or only hear about
+  releases with breaking changes.
 - **Live updates.** GitHub is polled every minute (at the interval GitHub asks for), and
   *Sync now* polls right away. Open tabs update instantly via server-sent events. Recent
   releases are re-checked every 30 minutes, so edited notes show up, and a pre-release that is
@@ -106,7 +106,7 @@ That process also runs the poller, so run exactly one instance.
 | `ghr.services.inbox`           | Read state, snoozing and unsubscribing                        |
 | `ghr.services.breaking`        | Breaking-change detection                                     |
 | `ghr.services.hide_rules`      | Hide rules and their previews                                 |
-| `ghr.services.notifications`   | Web Push, ntfy and Telegram, and what gets announced          |
+| `ghr.services.notifications`   | Web Push, ntfy, Telegram, desktop app, and what is announced  |
 | `ghr.services.snooze`          | Ends snoozes and sends reminders                              |
 | `ghr.services.stars`           | Star counts of repositories, refreshed daily                  |
 | `ghr.services.assets`          | Files attached to releases                                    |
@@ -158,42 +158,44 @@ That process also runs the poller, so run exactly one instance.
 
 The desktop app is a native window around the web app of your server, built with
 [Tauri 2](https://tauri.app). It uses the system's web view (WebView2 on Windows, WebKit on
-macOS and Linux), so it doesn't bundle a browser.
+macOS and Linux), so it doesn't bundle a browser. It needs a server of the same version or
+newer: older servers don't send it notifications.
 
-- On first start it asks for your server's address; you then sign in as usual. _Change server…_
-  in the tray menu asks again.
-- Closing the window keeps the app in the system tray. Click the tray icon to open it again;
-  its menu has _Sync now_ and _Quit_. A dot on the tray icon (and the count on the macOS Dock)
-  shows that the inbox has entries.
-- _Start at login_ in the tray menu adds the app to the system's login items (the registry's
+- On first start it asks for your server's address; you then sign in as usual. *Change server…*
+  in the tray menu asks again. A server that redirects http to https is followed to https.
+- Closing the window keeps the app in the system tray. Click the tray icon to open it again
+  (on macOS also the Dock icon); its menu has *Sync now*, *Reload* (for example after the
+  server was unreachable) and *Quit*. A dot on the tray icon and on the taskbar button (a count
+  on the macOS Dock) shows that the inbox has entries.
+- *Start at login* in the tray menu adds the app to the system's login items (the registry's
   `Run` key on Windows, a Launch Agent on macOS, an autostart entry on Linux). Started that way,
   it waits in the tray with the window hidden (`--hidden`) and still notifies you.
 - Notifications arrive over the app's live-update connection (`/api/events?notifications=true`)
-  and follow the same rules as the other channels: mutes, pre-releases, _Breaking only_. They
+  and follow the same rules as the other channels: mutes, pre-releases, *Breaking only*. They
   need no setup on the server, but only reach a desktop app that is running; there's no queue
   for one that is offline. Clicking a notification opens its release.
-- Notifications about releases have buttons: _Mark as read_, _Snooze until tomorrow_ (9:00) and
-  _Mute repository_. They act on exactly the releases the notification is about; one about
-  releases of several repositories has no _Mute_. The web app does the work with your session
-  (the desktop never calls the server itself) and applies it right away, with _Undo_ in the
+- Notifications about releases have buttons: *Mark as read*, *Snooze until tomorrow* (9:00) and
+  *Mute repository*. They act on exactly the releases the notification is about; one about
+  releases of several repositories has no *Mute*. The web app does the work with your session
+  (the desktop never calls the server itself) and applies it right away, with *Undo* in the
   app's toast. A failure is shown as a notification while the window isn't in front. On
   Windows the buttons only work while the notification is on screen, not from the Action
-  Center; macOS shows them in an _Options_ menu.
+  Center; macOS shows them in an *Options* menu.
 - Links that leave the app, such as releases on github.com, open in your browser. Only pages of
   the server you entered can use the desktop functions.
 
-| Desktop module                | Responsibility                                                  |
-| ----------------------------- | --------------------------------------------------------------- |
-| `desktop/setup`               | The page that asks for the server's address                     |
-| `src-tauri/src/window.rs`     | The main window, close to tray, links, the server's permissions |
-| `src-tauri/src/tray.rs`       | Tray icon, its menu (with _Start at login_) and the inbox dot   |
-| `src-tauri/src/commands.rs`   | What the pages can call: connect, notifications, inbox count    |
-| `src-tauri/src/actions.rs`    | The buttons on notifications, handed to the web app to run      |
-| `src-tauri/src/config.rs`     | The app's settings (server address) in its config folder        |
-| `frontend/src/lib/desktop.ts` | The web app's side: detects the desktop app and talks to it     |
+| Desktop module                           | Responsibility                                               |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `desktop/setup`                          | The page that asks for the server's address                  |
+| `desktop/src-tauri/src/window.rs`        | The main window, close to tray, links, the server's rights   |
+| `desktop/src-tauri/src/tray.rs`          | Tray icon, its menu and the inbox dot                        |
+| `desktop/src-tauri/src/notifications.rs` | Showing notifications, clicks and their buttons              |
+| `desktop/src-tauri/src/commands.rs`      | What the pages can call: connect, notifications, inbox count |
+| `desktop/src-tauri/src/config.rs`        | The app's settings (server address) in its config folder     |
+| `frontend/src/lib/desktop.ts`            | The web app's side: detects the desktop app and talks to it  |
 
 **Building.** Install Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/)
-for your platform, then:
+for your platform (on Windows, the MSI installer also needs the VBSCRIPT optional feature), then:
 
 ```bash
 cd desktop && npm install
@@ -201,9 +203,11 @@ npm run dev     # run it; for local development, connect to http://localhost:517
 npm run build   # installers in src-tauri/target/release/bundle/
 ```
 
-GitHub Actions builds the installers for Windows (`.msi`, `.exe`), macOS (`.dmg`) and Linux
-(`.AppImage`, `.deb`, `.rpm`) and keeps them as artifacts of the workflow run. The builds are
-not signed: Windows SmartScreen and macOS Gatekeeper warn before the first start.
+The app's version is the one in `desktop/src-tauri/Cargo.toml`. For every push to `main`,
+GitHub Actions builds the installers for Windows (`.msi`, `.exe`), macOS (`.dmg`, for Apple
+silicon and Intel) and Linux (`.AppImage`, `.deb`, `.rpm`) and keeps them as artifacts of the
+workflow run. The builds are not signed: Windows SmartScreen and macOS Gatekeeper warn before
+the first start.
 
 ## Local development
 
