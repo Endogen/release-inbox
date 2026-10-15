@@ -4,6 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useAppBadge } from "./use-app-badge"
 
+const desktop = vi.hoisted(() => ({
+  active: false,
+  setDesktopUnreadCount: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/desktop", () => ({
+  isDesktop: () => desktop.active,
+  setDesktopUnreadCount: desktop.setDesktopUnreadCount,
+}))
+
 function stubBadging() {
   const badging = {
     setAppBadge: vi.fn().mockResolvedValue(undefined),
@@ -14,7 +24,10 @@ function stubBadging() {
 }
 
 describe("useAppBadge", () => {
-  afterEach(cleanup)
+  afterEach(() => {
+    cleanup()
+    desktop.active = false
+  })
 
   it("shows the count, clears it at zero and on unmount", () => {
     const badging = stubBadging()
@@ -40,5 +53,18 @@ describe("useAppBadge", () => {
 
     vi.stubGlobal("navigator", {})
     expect(() => renderHook(() => useAppBadge(2))).not.toThrow()
+  })
+
+  it("shows the count on the tray icon in the desktop app", () => {
+    const badging = stubBadging()
+    desktop.active = true
+    const { rerender, unmount } = renderHook(({ count }) => useAppBadge(count), {
+      initialProps: { count: 4 },
+    })
+    rerender({ count: 0 })
+    unmount()
+
+    expect(desktop.setDesktopUnreadCount.mock.calls).toEqual([[4], [0], [0]])
+    expect(badging.setAppBadge).not.toHaveBeenCalled()
   })
 })

@@ -5,6 +5,7 @@ import { authKeys } from "@/features/auth/api"
 import { releaseKeys } from "@/features/releases/query-keys"
 import { syncKeys } from "@/features/sync/api"
 import type { SyncStatus } from "@/lib/api/types"
+import { isDesktop, readDesktopNotification, showDesktopNotification } from "@/lib/desktop"
 
 /** Reads the ``in_progress`` flag of a ``sync-status`` event; ``undefined`` if malformed. */
 function readInProgress(data: string): boolean | undefined {
@@ -29,6 +30,8 @@ const MAX_RETRY_MS = 60_000
  * error response (a proxy's 502 during a restart, or 401 once the session expired). Then the
  * session is re-checked and the stream reopened with backoff. Every reconnect refetches, so
  * changes that happened while disconnected aren't missed.
+ *
+ * In the desktop app the stream also carries the notifications, which the desktop shows.
  */
 export function useLiveUpdates(enabled: boolean): void {
   const queryClient = useQueryClient()
@@ -44,9 +47,10 @@ export function useLiveUpdates(enabled: boolean): void {
     let connected = false
 
     const refreshReleases = () => queryClient.invalidateQueries({ queryKey: releaseKeys.all })
+    const desktop = isDesktop()
 
     function connect() {
-      source = new EventSource("/api/events")
+      source = new EventSource(desktop ? "/api/events?notifications=true" : "/api/events")
 
       source.addEventListener("open", () => {
         retryDelay = INITIAL_RETRY_MS
@@ -64,6 +68,11 @@ export function useLiveUpdates(enabled: boolean): void {
           (status) => status && { ...status, in_progress }
         )
         if (!in_progress) void queryClient.invalidateQueries({ queryKey: syncKeys.status })
+      })
+
+      source.addEventListener("notification", (event: MessageEvent<string>) => {
+        const notification = readDesktopNotification(event.data)
+        if (notification) void showDesktopNotification(notification).catch(() => undefined)
       })
 
       source.addEventListener("error", () => {

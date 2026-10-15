@@ -133,7 +133,7 @@ export interface Preferences {
 }
 
 export interface NotificationChannel {
-  name: "web-push" | "ntfy" | "telegram"
+  name: "web-push" | "ntfy" | "telegram" | "desktop"
   configured: boolean
 }
 

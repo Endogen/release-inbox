@@ -3,13 +3,21 @@ import { toast } from "sonner"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { FieldLegend, FieldSet } from "@/components/ui/field"
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLegend,
+  FieldSet,
+  FieldTitle,
+} from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Spinner } from "@/components/ui/spinner"
 import { useNotificationChannels, useSendTestNotification } from "@/features/notifications/api"
 import { usePushNotifications } from "@/features/notifications/use-push-notifications"
 import { usePreferences, useUpdatePreferences } from "@/features/preferences/api"
 import type { NotificationChannel, NotifyAbout } from "@/lib/api/types"
+import { isDesktop } from "@/lib/desktop"
 
 import { ChoiceField, SwitchField } from "./setting-fields"
 
@@ -17,7 +25,11 @@ const CHANNEL_LABELS: Record<NotificationChannel["name"], string> = {
   "web-push": "Browser push",
   ntfy: "ntfy",
   telegram: "Telegram",
+  desktop: "Desktop app",
 }
+
+/** Channels shown with the device's own switch or note rather than as a server badge. */
+const DEVICE_CHANNELS: ReadonlySet<NotificationChannel["name"]> = new Set(["web-push", "desktop"])
 
 const NOTIFY_ABOUT: ReadonlyArray<{ value: NotifyAbout; label: string }> = [
   { value: "all", label: "All" },
@@ -39,8 +51,14 @@ export function NotificationSettings() {
         : !push.serverEnabled && !push.isLoading
           ? "Browser push isn't configured on the server. Set the VAPID keys to enable it."
           : null
-  const serverChannels = channels.data?.filter((channel) => channel.name !== "web-push") ?? []
-  const anyConfigured = channels.data?.some((channel) => channel.configured) ?? false
+  const desktop = isDesktop()
+  const serverChannels =
+    channels.data?.filter((channel) => !DEVICE_CHANNELS.has(channel.name)) ?? []
+  // The desktop channel is always there, but only reaches anyone while a desktop app runs.
+  const anyConfigured =
+    channels.data?.some(
+      (channel) => channel.configured && (channel.name !== "desktop" || desktop)
+    ) ?? false
 
   function toggle(enabled: boolean) {
     const mutation = enabled ? push.enable : push.disable
@@ -54,8 +72,12 @@ export function NotificationSettings() {
     sendTest.mutate(undefined, {
       onSuccess: ({ delivered }) => {
         const entries = (Object.entries(delivered) as [NotificationChannel["name"], boolean][])
-          // Browser push only reaches devices that turned it on; that isn't a failure here.
-          .filter(([name, ok]) => ok || name !== "web-push" || push.isSubscribed)
+          // Browser push only reaches devices that turned it on, and the desktop channel only
+          // running desktop apps; elsewhere that isn't a failure.
+          .filter(
+            ([name, ok]) =>
+              ok || (name === "web-push" ? push.isSubscribed : name === "desktop" ? desktop : true)
+          )
         const sent = entries.filter(([, ok]) => ok).map(([name]) => CHANNEL_LABELS[name])
         const failed = entries.filter(([, ok]) => !ok).map(([name]) => CHANNEL_LABELS[name])
         if (failed.length > 0) toast.error(`Couldn't deliver via ${failed.join(", ")}`)
@@ -68,14 +90,25 @@ export function NotificationSettings() {
   return (
     <FieldSet>
       <FieldLegend>Notifications</FieldLegend>
-      <SwitchField
-        label="Browser push on this device"
-        description={unavailableReason ?? "Even when the app is closed."}
-        checked={push.isSubscribed}
-        onCheckedChange={toggle}
-        busy={busy}
-        disabled={unavailableReason !== null || push.isLoading || busy}
-      />
+      {desktop ? (
+        <Field>
+          <FieldContent>
+            <FieldTitle>Desktop notifications</FieldTitle>
+            <FieldDescription>
+              Shown while the app runs, also when it's closed to the tray.
+            </FieldDescription>
+          </FieldContent>
+        </Field>
+      ) : (
+        <SwitchField
+          label="Browser push on this device"
+          description={unavailableReason ?? "Even when the app is closed."}
+          checked={push.isSubscribed}
+          onCheckedChange={toggle}
+          busy={busy}
+          disabled={unavailableReason !== null || push.isLoading || busy}
+        />
+      )}
       {preferences.data ? (
         <ChoiceField
           label="Notify about"

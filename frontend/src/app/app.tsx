@@ -12,6 +12,7 @@ import { useLiveUpdates } from "@/features/live-updates/use-live-updates"
 import { useNotificationNavigation } from "@/features/notifications/use-notification-navigation"
 import { DeferredActionsProvider } from "@/features/releases/deferred-actions/provider"
 import { InboxPage } from "@/features/releases/inbox-page"
+import { DesktopTraySync } from "@/features/sync/desktop-tray-sync"
 import { ThemeProvider } from "@/features/theme/provider"
 import { isView } from "@/lib/api/types"
 
@@ -77,10 +78,13 @@ function AuthenticatedApp() {
   }
 
   return (
-    <Routes>
-      <Route path="/:view" element={<ViewRoute username={user.username} />} />
-      <Route path="*" element={<Navigate to="/inbox" replace />} />
-    </Routes>
+    <>
+      <DesktopTraySync />
+      <Routes>
+        <Route path="/:view" element={<ViewRoute username={user.username} />} />
+        <Route path="*" element={<Navigate to="/inbox" replace />} />
+      </Routes>
+    </>
   )
 }
 

@@ -1,6 +1,8 @@
 import { useEffect } from "react"
 import { useNavigate } from "react-router"
 
+import { isDesktop, onDesktopEvent } from "@/lib/desktop"
+
 interface NavigateMessage {
   type: "navigate"
   url: string
@@ -15,11 +17,12 @@ function isNavigateMessage(data: unknown): data is NavigateMessage {
   )
 }
 
-/** Opens the release a clicked push notification points to inside the running app. */
+/** Opens the release a clicked notification points to inside the running app. */
 export function useNotificationNavigation(): void {
   const navigate = useNavigate()
 
   useEffect(() => {
+    if (isDesktop()) return onDesktopEvent("desktop://navigate", (url) => navigate(url))
     if (!("serviceWorker" in navigator)) return
 
     function onMessage(event: MessageEvent) {

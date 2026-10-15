@@ -11,13 +11,26 @@ import type { SyncStatus } from "@/lib/api/types"
 
 import { useLiveUpdates } from "./use-live-updates"
 
+const desktop = vi.hoisted(() => ({
+  active: false,
+  showDesktopNotification: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock("@/lib/desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/desktop")>()),
+  isDesktop: () => desktop.active,
+  showDesktopNotification: desktop.showDesktopNotification,
+}))
+
 class FakeEventSource extends EventTarget {
   static readonly CLOSED = 2
   static instances: FakeEventSource[] = []
   readyState = 0
+  readonly url: string
 
-  constructor() {
+  constructor(url: string) {
     super()
+    this.url = url
     FakeEventSource.instances.push(this)
   }
 
@@ -52,6 +65,8 @@ function setup() {
 
 describe("useLiveUpdates", () => {
   beforeEach(() => {
+    desktop.active = false
+    desktop.showDesktopNotification.mockClear()
     vi.useFakeTimers()
     FakeEventSource.instances = []
     vi.stubGlobal("EventSource", FakeEventSource)
@@ -104,6 +119,31 @@ describe("useLiveUpdates", () => {
     act(() => latest().emit("sync-status", '{"in_progress": true}'))
 
     expect(queryClient.getQueryData<SyncStatus>(syncKeys.status)?.in_progress).toBe(true)
+  })
+
+  it("asks for notifications in the desktop app and hands them to it", () => {
+    desktop.active = true
+    setup()
+    expect(latest().url).toBe("/api/events?notifications=true")
+
+    const notification = {
+      title: "acme/app",
+      body: "v2.0.0 was released",
+      url: "/inbox?release=2",
+      tag: "release-2",
+      unread: 1,
+      release_ids: [2],
+      repository_id: 10,
+    }
+    act(() => latest().emit("notification", "not json"))
+    act(() => latest().emit("notification", JSON.stringify(notification)))
+
+    expect(desktop.showDesktopNotification.mock.calls).toEqual([[notification]])
+  })
+
+  it("leaves notifications to browser push in the browser", () => {
+    setup()
+    expect(latest().url).toBe("/api/events")
   })
 
   it("closes the stream on unmount", () => {
