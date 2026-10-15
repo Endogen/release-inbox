@@ -73,15 +73,7 @@ class WebPushChannel:
         async with self._session_factory() as session:
             subscriptions = list(await session.scalars(select(PushSubscription)))
 
-        payload = json.dumps(
-            {
-                "title": notification.title,
-                "body": notification.body,
-                "url": notification.path,
-                "tag": notification.tag,
-                "unread": notification.unread,
-            }
-        )
+        payload = json.dumps(notification.payload())
         results = await gather_limited(
             (self._deliver(item, payload) for item in subscriptions), limit=_CONCURRENCY
         )

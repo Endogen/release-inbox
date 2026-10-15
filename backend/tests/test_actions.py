@@ -186,6 +186,9 @@ class TestSnooze:
         assert [(item.title, item.path) for item in sent] == [
             ("Back from snooze: acme/app", f"/inbox?release={WEB_NEW.id}")
         ]
+        # About every release that came back, so actions on the reminder cover all of them.
+        assert sent[0].release_ids == (WEB_NEW.id, DOCS.id, WEB_OLD.id)
+        assert sent[0].repository_id == 10
 
     async def test_marking_read_clears_the_snooze(
         self, synced: respx.Route, user_client: AsyncClient

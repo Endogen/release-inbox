@@ -1,7 +1,7 @@
 """The notification payload and the interface every delivery channel implements."""
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 GITHUB_NOTIFICATIONS_URL = "https://github.com/notifications"
 
@@ -22,6 +22,16 @@ class Notification:
     release_ids: tuple[int, ...] = ()
     #: Set if all of them belong to one repository.
     repository_id: int | None = None
+
+    def payload(self) -> dict[str, Any]:
+        """What the channels into the app itself (Web Push, the desktop app) deliver."""
+        return {
+            "title": self.title,
+            "body": self.body,
+            "url": self.path,
+            "tag": self.tag,
+            "unread": self.unread,
+        }
 
     def link(self, public_url: str | None) -> str:
         """Into the app if its address is known, else to GitHub."""

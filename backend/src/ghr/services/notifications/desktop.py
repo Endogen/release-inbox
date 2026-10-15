@@ -13,16 +13,12 @@ class DesktopChannel:
         self._broker = broker
 
     async def send(self, notification: Notification) -> bool:
-        """Reaches only desktop apps that are connected right now; there is no queue for
-        the others. They refetch the inbox when they reconnect."""
+        """Queued only for desktop apps that are connected right now; the others refetch the
+        inbox when they reconnect."""
         event = Event(
             "notification",
             {
-                "title": notification.title,
-                "body": notification.body,
-                "url": notification.path,
-                "tag": notification.tag,
-                "unread": notification.unread,
+                **notification.payload(),
                 "release_ids": list(notification.release_ids),
                 "repository_id": notification.repository_id,
             },

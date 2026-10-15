@@ -4,14 +4,13 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import TypedDict
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import contains_eager
 
 from ghr.domain import NotifyAbout, PrereleaseMode, View
-from ghr.models import Release, Repository
+from ghr.models import Preferences, Release, Repository
 from ghr.services.filters import is_hidden
 from ghr.services.notifications.message import (
     GITHUB_NOTIFICATIONS_URL,
@@ -88,23 +87,38 @@ class Notifier:
             if preferences.notify_about is NotifyAbout.BREAKING:
                 statement = statement.where(Release.breaking.is_(True))
             releases = list(await session.scalars(statement))
-        if releases:
-            await self._announce(_new_releases_notification(releases))
+            if not releases:
+                return
+            unread = await _unread(session, preferences)
+        await self._announce(_new_releases_notification(releases), releases, unread)
 
     async def announce_snooze_ended(self, releases: Sequence[Release]) -> None:
-        """Remind about snoozed releases; the user asked for this, so mutes don't apply."""
-        if releases:
-            await self._announce(_snooze_ended_notification(releases))
-
-    async def _announce(self, notification: Notification) -> None:
-        """Send with the number of inbox entries, which installed apps show on their icon
-        unless the user turned that off."""
+        """Remind about snoozed releases, newest first; the user asked for this, so mutes
+        don't apply."""
+        if not releases:
+            return
         async with self._session_factory() as session:
-            preferences = await load_preferences(session)
-            unread = (
-                await ReleaseQueries(session).count(View.INBOX) if preferences.app_badge else None
+            unread = await _unread(session, await load_preferences(session))
+        await self._announce(_snooze_ended_notification(releases), releases, unread)
+
+    async def _announce(
+        self, notification: Notification, releases: Sequence[Release], unread: int | None
+    ) -> None:
+        repository_ids = {release.repository_id for release in releases}
+        await self.send(
+            replace(
+                notification,
+                unread=unread,
+                release_ids=tuple(release.id for release in releases),
+                repository_id=next(iter(repository_ids)) if len(repository_ids) == 1 else None,
             )
-        await self.send(replace(notification, unread=unread))
+        )
+
+
+async def _unread(session: AsyncSession, preferences: Preferences) -> int | None:
+    """Entries in the inbox, which installed apps show on their icon unless the user turned
+    that off."""
+    return await ReleaseQueries(session).count(View.INBOX) if preferences.app_badge else None
 
 
 def _title(release: Release) -> str:
@@ -121,7 +135,6 @@ def _new_releases_notification(releases: Sequence[Release]) -> Notification:
             path=f"/inbox?release={release.id}",
             external_url=release.html_url,
             tag=f"release-{release.id}",
-            **_about(releases),
         )
     return Notification(
         title=f"{len(releases)} new releases",
@@ -129,41 +142,29 @@ def _new_releases_notification(releases: Sequence[Release]) -> Notification:
         path="/inbox",
         external_url=GITHUB_NOTIFICATIONS_URL,
         tag="releases",
-        **_about(releases),
     )
 
 
 def _snooze_ended_notification(releases: Sequence[Release]) -> Notification:
-    if len(releases) == 1:
-        release = releases[0]
+    """One reminder about the newest release of each repository."""
+    newest: dict[int, Release] = {}
+    for release in releases:
+        newest.setdefault(release.repository_id, release)
+    if len(newest) == 1:
+        release = next(iter(newest.values()))
         return Notification(
             title=f"Back from snooze: {release.repository.full_name}",
             body=_title(release),
             path=f"/inbox?release={release.id}",
             external_url=release.html_url,
             tag=f"snooze-{release.id}",
-            **_about(releases),
         )
     return Notification(
-        title=f"{len(releases)} snoozed releases are back",
-        body=_summarise_names(releases),
+        title=f"{len(newest)} snoozed releases are back",
+        body=_summarise_names(list(newest.values())),
         path="/inbox",
         external_url=GITHUB_NOTIFICATIONS_URL,
         tag="snooze",
-        **_about(releases),
-    )
-
-
-class _About(TypedDict):
-    release_ids: tuple[int, ...]
-    repository_id: int | None
-
-
-def _about(releases: Sequence[Release]) -> _About:
-    repository_ids = {release.repository_id for release in releases}
-    return _About(
-        release_ids=tuple(release.id for release in releases),
-        repository_id=next(iter(repository_ids)) if len(repository_ids) == 1 else None,
     )
 
 

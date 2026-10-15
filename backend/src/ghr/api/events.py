@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Annotated
 
 from fastapi import APIRouter, Query
@@ -17,7 +17,7 @@ async def stream_events(
     notifications: Annotated[
         bool, Query(description="Also send ``notification`` events (the desktop app)")
     ] = False,
-) -> AsyncIterator[ServerSentEvent]:
+) -> AsyncGenerator[ServerSentEvent]:
     """Live updates: ``releases-changed``, ``sync-status`` and, if asked for, ``notification``."""
     async with container.broker.subscribe(notifications=notifications) as queue:
         yield ServerSentEvent(comment="connected", retry=_RECONNECT_DELAY_MS)

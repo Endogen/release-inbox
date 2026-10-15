@@ -45,10 +45,8 @@ class SnoozeWaker:
             return 0
         logger.info("%d snoozed releases are back in the inbox", len(due))
         self._broker.publish(RELEASES_CHANGED)
-        # One reminder per repository, about its newest release; hidden ones stay quiet.
-        newest: dict[int, Release] = {}
-        for release, hidden in due:
-            if not hidden:
-                newest.setdefault(release.repository_id, release)
-        await self._notifier.announce_snooze_ended(list(newest.values()))
+        # Hidden releases stay quiet.
+        await self._notifier.announce_snooze_ended(
+            [release for release, hidden in due if not hidden]
+        )
         return len(due)

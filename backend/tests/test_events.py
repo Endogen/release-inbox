@@ -1,7 +1,11 @@
 """The in-process event broker behind the live updates."""
 
 import asyncio
+from types import SimpleNamespace
+from typing import cast
 
+from ghr.api.events import stream_events
+from ghr.container import Container
 from ghr.events import Event, EventBroker
 
 
@@ -40,3 +44,23 @@ async def test_notifications_only_reach_subscribers_that_ask_for_them() -> None:
 
 def _drain(queue: asyncio.Queue[Event]) -> list[Event]:
     return [queue.get_nowait() for _ in range(queue.qsize())]
+
+
+async def test_the_stream_sends_notifications_only_if_asked() -> None:
+    broker = EventBroker()
+    container = cast(Container, SimpleNamespace(broker=broker))
+    desktop = stream_events(container, notifications=True)
+    tab = stream_events(container)
+    for stream in (desktop, tab):
+        await anext(stream)  # the "connected" comment, sent once subscribed
+
+    broker.publish(Event("notification", {"title": "acme/app"}))
+    broker.publish(Event("releases-changed"))
+
+    assert [(await anext(desktop)).event for _ in range(2)] == [
+        "notification",
+        "releases-changed",
+    ]
+    assert (await anext(tab)).event == "releases-changed"
+    await desktop.aclose()
+    await tab.aclose()
