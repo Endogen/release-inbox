@@ -54,6 +54,14 @@ export function NotificationSettings() {
   const desktop = isDesktop()
   const serverChannels =
     channels.data?.filter((channel) => !DEVICE_CHANNELS.has(channel.name)) ?? []
+  // Whether a channel's failure to deliver concerns this device: browser push only reaches
+  // devices that turned it on, the desktop channel only running desktop apps.
+  const reachesHere: Record<NotificationChannel["name"], boolean> = {
+    "web-push": push.isSubscribed,
+    desktop,
+    ntfy: true,
+    telegram: true,
+  }
   // The desktop channel is always there, but only reaches anyone while a desktop app runs.
   const anyConfigured =
     channels.data?.some(
@@ -71,13 +79,9 @@ export function NotificationSettings() {
   function test() {
     sendTest.mutate(undefined, {
       onSuccess: ({ delivered }) => {
-        const entries = (Object.entries(delivered) as [NotificationChannel["name"], boolean][])
-          // Browser push only reaches devices that turned it on, and the desktop channel only
-          // running desktop apps; elsewhere that isn't a failure.
-          .filter(
-            ([name, ok]) =>
-              ok || (name === "web-push" ? push.isSubscribed : name === "desktop" ? desktop : true)
-          )
+        const entries = (
+          Object.entries(delivered) as [NotificationChannel["name"], boolean][]
+        ).filter(([name, ok]) => ok || reachesHere[name])
         const sent = entries.filter(([, ok]) => ok).map(([name]) => CHANNEL_LABELS[name])
         const failed = entries.filter(([, ok]) => !ok).map(([name]) => CHANNEL_LABELS[name])
         if (failed.length > 0) toast.error(`Couldn't deliver via ${failed.join(", ")}`)

@@ -27,6 +27,7 @@ describe("useAppBadge", () => {
   afterEach(() => {
     cleanup()
     desktop.active = false
+    desktop.setDesktopUnreadCount.mockClear()
   })
 
   it("shows the count, clears it at zero and on unmount", () => {
