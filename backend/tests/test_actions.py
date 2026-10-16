@@ -36,6 +36,44 @@ def in_hours(hours: float) -> str:
     return (datetime.now(UTC) + timedelta(hours=hours)).isoformat()
 
 
+@pytest.mark.parametrize("action", ["read", "snooze"])
+async def test_older_actions_respect_release_order_when_timestamps_tie(
+    action: str,
+    container: Container,
+    github_api: respx.MockRouter,
+    user_client: AsyncClient,
+) -> None:
+    releases = [
+        FakeRelease(1, 10, "acme/app", "v1", "2026-10-02T10:00:00Z"),
+        FakeRelease(2, 10, "acme/app", "v2", "2026-10-02T10:00:00Z"),
+        FakeRelease(3, 10, "acme/app", "v3", "2026-10-02T10:00:00Z"),
+        FakeRelease(4, 10, "acme/app", "v0", "2026-10-01T10:00:00Z"),
+    ]
+    await import_releases(container, github_api, releases)
+    mirrored = github_api.patch(url__regex=r"/notifications/threads/.+").mock(
+        return_value=Response(205)
+    )
+    history = (await user_client.get("/api/repositories/10/releases")).json()
+    assert [item["id"] for item in history] == [3, 2, 1, 4]
+
+    # Selecting v2 in the version picker must leave the newer v3 in the inbox.
+    payload = (
+        {"include_older_in": "inbox"}
+        if action == "read"
+        else {"view": "inbox", "until": in_hours(1)}
+    )
+    response = await user_client.post(f"/api/releases/2/{action}", json=payload)
+
+    assert response.status_code == 204
+    unread = (await user_client.get("/api/repositories/10/unread")).json()
+    assert [item["id"] for item in unread] == [3]
+    destination = "read" if action == "read" else "snoozed"
+    assert await list_ids(user_client, destination) == [2]
+    if action == "read":
+        marked = {call.request.url.path.rsplit("/", 1)[-1] for call in mirrored.calls}
+        assert marked == {"thread-1", "thread-2", "thread-4"}
+
+
 class TestMarkRead:
     async def test_marks_older_releases_in_the_view_and_mirrors_to_github(
         self, synced: respx.Route, user_client: AsyncClient

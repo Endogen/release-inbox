@@ -10,7 +10,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ghr.concurrency import gather_limited
@@ -56,12 +56,13 @@ class InboxService:
         await self._commit()
 
     async def snooze(
-        self, release_id: int, until: datetime, *, view: View, search: str | None = None
+        self, release_id: int, until: datetime, *, view: View | None, search: str | None = None
     ) -> None:
         """Hide the release and its older releases in ``view`` that match ``search`` from the
         inbox until ``until``.
 
-        A newer release of the repository still shows up in the inbox right away.
+        With no view, only this release is snoozed. A newer release of the repository still
+        shows up in the inbox right away.
         """
         release = await self._get_release(release_id)
         if release.read_at is not None:
@@ -72,14 +73,19 @@ class InboxService:
         )
         if hidden:
             raise ConflictError("Hidden releases can't be snoozed")
-        for item in {release, *await self._older_in_view(release, view, search, context)}:
+        older = await self._older_in_view(release, view, search, context) if view else []
+        for item in {release, *older}:
             item.snoozed_until = until
         await self._commit()
 
-    async def unsnooze(self, release_id: int) -> None:
-        """Undo a snooze: every release snoozed together with this one returns."""
+    async def unsnooze(self, release_id: int, *, include_group: bool = True) -> None:
+        """Undo a snooze, optionally including releases snoozed together with this one."""
         release = await self._get_release(release_id)
         if release.snoozed_until is None:
+            return
+        if not include_group:
+            release.snoozed_until = None
+            await self._commit()
             return
         together = await self._session.scalars(
             select(Release).where(
@@ -129,7 +135,10 @@ class InboxService:
         context = context or await load_view_context(self._session)
         filters = [
             Release.repository_id == release.repository_id,
-            Release.published_at <= release.published_at,
+            or_(
+                Release.published_at < release.published_at,
+                and_(Release.published_at == release.published_at, Release.id <= release.id),
+            ),
             in_view(view, context),
             matches_search(search),
         ]

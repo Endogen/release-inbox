@@ -155,6 +155,19 @@ class TestScheduler:
 
         assert await instance.run_once() == 60
 
+    async def test_keeps_running_when_sync_fails_between_refreshes(self) -> None:
+        instance, sync = scheduler(SyncResult(0, None))
+        assert await instance.run_once() == 60
+        assert sync.refreshes == 1
+
+        async def broken() -> SyncResult:
+            raise RuntimeError("boom")
+
+        sync.sync = broken
+
+        assert await instance.run_once() == 60
+        assert sync.refreshes == 1
+
 
 def test_backup_writes_a_copy_and_prunes_old_ones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

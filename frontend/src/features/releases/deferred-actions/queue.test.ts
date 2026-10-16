@@ -81,6 +81,50 @@ describe("DeferredActionQueue", () => {
     expect(commit).toHaveBeenCalledTimes(2)
   })
 
+  it("waits for a timer-started request before allowing sign-out to continue", async () => {
+    let confirm: () => void = () => {}
+    const { queue, commit } = setup(
+      vi.fn(() => new Promise<void>((resolve) => (confirm = resolve)))
+    )
+    const signOut = vi.fn()
+
+    queue.schedule(ACTION)
+    await vi.advanceTimersByTimeAsync(1000)
+    const signingOut = queue.flush().then(signOut)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(signOut).not.toHaveBeenCalled()
+    expect(commit).toHaveBeenCalledTimes(1)
+
+    confirm()
+    await signingOut
+    expect(signOut).toHaveBeenCalledOnce()
+    expect(queue.getSnapshot()).toEqual([])
+  })
+
+  it("waits for requests started by an earlier flush without sending them twice", async () => {
+    let reject: (error: Error) => void = () => {}
+    const { queue, commit, onError } = setup(
+      vi.fn(() => new Promise<void>((_resolve, rejectRequest) => (reject = rejectRequest)))
+    )
+    const settled = vi.fn()
+    const error = new Error("offline")
+
+    queue.schedule(ACTION)
+    const firstFlush = queue.flush({ keepalive: true })
+    const secondFlush = queue.flush().then(settled)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(settled).not.toHaveBeenCalled()
+    expect(commit).toHaveBeenCalledTimes(1)
+
+    reject(error)
+    await Promise.all([firstFlush, secondFlush])
+    expect(onError).toHaveBeenCalledWith(ACTION, error)
+    expect(settled).toHaveBeenCalledOnce()
+    expect(queue.getSnapshot()).toEqual([])
+  })
+
   it("reports failures and releases the action", async () => {
     const error = new Error("offline")
     const { queue, onError } = setup(vi.fn().mockRejectedValue(error))

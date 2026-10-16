@@ -254,16 +254,14 @@ fn hide(app: &AppHandle) {
     }
 }
 
-/// What a click on the tray icon does: brings the window to the front, or hides it if it
-/// already is.
+/// A single tray click shows a hidden/minimized window or hides an open one.
 pub fn toggle(app: &AppHandle) {
-    match app.get_webview_window(MAIN) {
-        Some(window)
-            if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) =>
-        {
-            hide(app);
-        }
-        _ => show(app),
+    // Clicking the tray can take focus away from the window before this runs.
+    // Visibility, rather than focus, determines which action the user expects.
+    if is_hidden(app) {
+        show(app);
+    } else {
+        hide(app);
     }
 }
 

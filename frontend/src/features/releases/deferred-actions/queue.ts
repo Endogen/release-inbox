@@ -35,6 +35,7 @@ export interface QueueCallbacks {
 interface Entry {
   action: DeferredAction
   timer: ReturnType<typeof setTimeout> | undefined
+  committing?: Promise<void>
 }
 
 /**
@@ -83,22 +84,24 @@ export class DeferredActionQueue {
   /** Sends a pending action now instead of waiting for the undo window to end. */
   commit(id: string, options: CommitOptions = { keepalive: false }): Promise<void> {
     const entry = this.entries.get(id)
-    if (!entry || entry.timer === undefined) return Promise.resolve()
+    if (!entry) return Promise.resolve()
+    if (entry.committing) return entry.committing
     clearTimeout(entry.timer)
     // Stays in the queue (and hidden in the UI) until the server confirmed it.
     entry.timer = undefined
-    return this.callbacks.commit(entry.action, options).then(
+    entry.committing = this.callbacks.commit(entry.action, options).then(
       () => this.remove(entry),
       (error: unknown) => {
         this.callbacks.onError?.(entry.action, error)
         this.remove(entry)
       }
     )
+    return entry.committing
   }
 
-  /** Sends everything that is still waiting, e.g. before the page is hidden or on sign-out. */
+  /** Sends waiting actions and awaits all commits, including ones already in flight. */
   flush(options: CommitOptions = { keepalive: false }): Promise<void> {
-    const pending = [...this.entries.values()].filter((entry) => entry.timer !== undefined)
+    const pending = [...this.entries.values()]
     return Promise.all(pending.map((entry) => this.commit(entry.action.id, options))).then(
       () => undefined
     )

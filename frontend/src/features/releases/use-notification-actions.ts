@@ -47,13 +47,14 @@ export function useNotificationActions(): (action: DesktopAction) => void {
         const until = tomorrow()
         void forEach(
           releaseIds,
-          (id) => snooze.mutateAsync({ ...release(id), until, view: "inbox", search: "" }),
+          (id) => snooze.mutateAsync({ ...release(id), until, view: null, search: "" }),
           "Couldn't snooze"
         ).then((done) => {
           if (done.length === 0) return
           toastWithUndo(`Snoozed${releases(done.length)} until ${formatAbsolute(until)}`, {
             description,
-            onUndo: () => done.forEach((id) => unsnooze.mutate(release(id))),
+            onUndo: () =>
+              done.forEach((id) => unsnooze.mutate({ ...release(id), includeGroup: false })),
           })
         })
         return

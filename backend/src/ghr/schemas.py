@@ -118,8 +118,8 @@ class MarkReadRequest(BaseModel):
 
 class SnoozeRequest(BaseModel):
     until: AwareDatetime
-    #: The view the user snoozed from; older releases of the repository in it are snoozed too.
-    view: Literal[View.INBOX, View.SNOOZED] = View.INBOX
+    #: Older releases in this view are snoozed too; None snoozes only this release.
+    view: Literal[View.INBOX, View.SNOOZED] | None = View.INBOX
     #: The search the entry was listed under; older releases must match it too.
     search: str | None = Field(default=None, max_length=MAX_SEARCH_LENGTH)
 

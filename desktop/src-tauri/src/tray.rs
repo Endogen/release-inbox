@@ -1,4 +1,4 @@
-//! The tray icon: opens the window, shows whether notifications can arrive and whether the
+//! The tray icon: toggles the window, shows whether notifications can arrive and whether the
 //! inbox has entries, and offers the app's menu. It stays after the window is closed, until
 //! the user quits.
 

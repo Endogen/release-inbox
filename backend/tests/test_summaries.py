@@ -77,6 +77,36 @@ async def test_summaries_are_cached_until_the_notes_change(
     assert len(summarizer.calls) == 2
 
 
+@pytest.mark.parametrize(
+    "other_release",
+    [
+        replace(RELEASE, id=2, repo_id=20, full_name="acme/other"),
+        replace(RELEASE, id=2, published_at="2026-10-02T10:00:00Z"),
+    ],
+    ids=["different-repository", "different-publication-date"],
+)
+async def test_summary_cache_keeps_release_context_separate(
+    container: Container,
+    github_api: respx.MockRouter,
+    user_client: AsyncClient,
+    summarizer: FakeSummarizer,
+    other_release: FakeRelease,
+) -> None:
+    mock_github(github_api, [RELEASE, other_release])
+    await container.sync.sync()
+
+    first = await user_client.post("/api/summaries", json={"release_ids": [RELEASE.id]})
+    assert first.status_code == 200
+
+    cached = await user_client.get("/api/summaries", params={"release_ids": [other_release.id]})
+    assert cached.status_code == 404
+
+    second = await user_client.post("/api/summaries", json={"release_ids": [other_release.id]})
+    assert second.status_code == 200
+    assert len(summarizer.calls) == 2
+    assert summarizer.calls[0] != summarizer.calls[1]
+
+
 @pytest.mark.parametrize("summarizer", [None], indirect=True)
 async def test_missing_configuration(user_client: AsyncClient) -> None:
     config = await user_client.get("/api/summaries/config")

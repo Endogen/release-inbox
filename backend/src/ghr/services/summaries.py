@@ -1,8 +1,9 @@
 """AI summaries of release notes, generated on request (``ghr.services.claude``) and cached."""
 
 import hashlib
+import json
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Protocol
 
 from sqlalchemy import select
@@ -107,7 +108,6 @@ def format_notes(notes: Sequence[ReleaseNotes]) -> str:
 
 
 def _cache_key(model: str, notes: Sequence[ReleaseNotes]) -> str:
-    digest = hashlib.sha256(model.encode())
-    for item in notes:
-        digest.update(f"\0{item.tag}\0{item.title}\0{item.body}".encode())
-    return digest.hexdigest()
+    # Every field contributes to the prompt, including repository and publication date.
+    payload = json.dumps([model, [asdict(item) for item in notes]], ensure_ascii=False)
+    return hashlib.sha256(payload.encode()).hexdigest()

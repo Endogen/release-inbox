@@ -88,13 +88,17 @@ describe("useNotificationActions", () => {
     await run({ action: "snooze", release_ids: [1] })
 
     const [request] = requests()
-    const body = JSON.parse(request?.split(" ").slice(2).join(" ") ?? "{}") as { until: string }
+    const body = JSON.parse(request?.split(" ").slice(2).join(" ") ?? "{}") as {
+      until: string
+      view: unknown
+    }
     expect(request).toMatch(/^POST \/api\/releases\/1\/snooze /)
+    expect(body.view).toBeNull()
     const until = new Date(body.until)
     expect(until.getHours()).toBe(9)
     expect(until.getTime()).toBeGreaterThan(Date.now())
     expect(mocks.toastWithUndo.mock.calls[0]?.[0]).toMatch(/^Snoozed until /)
-    expect(await undo()).toEqual(["DELETE /api/releases/1/snooze"])
+    expect(await undo()).toEqual(["DELETE /api/releases/1/snooze?include_group=false"])
   })
 
   it("mutes the repository", async () => {

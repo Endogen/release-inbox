@@ -68,11 +68,11 @@ async def mark_unread(release_id: int, inbox: InboxServiceDep) -> None:
 
 @router.post("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)
 async def snooze(release_id: int, payload: SnoozeRequest, inbox: InboxServiceDep) -> None:
-    """Hide the release and its older releases in the view until the given time."""
+    """Hide the release until the given time, including older ones when a view is supplied."""
     await inbox.snooze(release_id, payload.until, view=payload.view, search=payload.search)
 
 
 @router.delete("/{release_id}/snooze", status_code=status.HTTP_204_NO_CONTENT)
-async def unsnooze(release_id: int, inbox: InboxServiceDep) -> None:
-    """Undo a snooze: the releases snoozed together with this one return."""
-    await inbox.unsnooze(release_id)
+async def unsnooze(release_id: int, inbox: InboxServiceDep, include_group: bool = True) -> None:
+    """Undo a snooze, optionally including the releases snoozed together with this one."""
+    await inbox.unsnooze(release_id, include_group=include_group)

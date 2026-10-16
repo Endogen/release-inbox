@@ -105,7 +105,7 @@ class SyncScheduler:
             if not self.backing_off:
                 results.append(await self._run("refreshing star counts", self._stars.refresh_due))
         waits = (result.retry_after_seconds or 0 for result in results if result is not None)
-        return max(delay, *waits)
+        return max([delay, *waits])
 
     async def _run[R: _RetryHint](self, job: str, work: Callable[[], Awaitable[R]]) -> R | None:
         """Run a job, backing off if GitHub asked to wait. A failure is logged, not raised: one

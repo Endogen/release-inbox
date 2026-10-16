@@ -156,7 +156,7 @@ export function useMarkRead() {
   )
 }
 
-/** Snoozes the release and its older releases in ``view`` that match ``search``. */
+/** Snoozes the release, plus older matches when ``view`` is not null. */
 export function useSnooze() {
   return useReleaseMutation(
     ({
@@ -164,7 +164,7 @@ export function useSnooze() {
       until,
       view,
       search,
-    }: ReleaseActionInput & { until: Date; view: View; search: string }) =>
+    }: ReleaseActionInput & { until: Date; view: View | null; search: string }) =>
       api.post(`/releases/${releaseId}/snooze`, {
         until: until.toISOString(),
         view,
@@ -176,7 +176,8 @@ export function useSnooze() {
 
 export function useUnsnooze() {
   return useReleaseMutation(
-    ({ releaseId }) => api.delete(`/releases/${releaseId}/snooze`),
+    ({ releaseId, includeGroup = true }: ReleaseActionInput & { includeGroup?: boolean }) =>
+      api.delete(`/releases/${releaseId}/snooze${includeGroup ? "" : "?include_group=false"}`),
     "Couldn't unsnooze"
   )
 }
