@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 import { authKeys } from "@/features/auth/api"
 import { releaseKeys } from "@/features/releases/query-keys"
@@ -21,9 +21,13 @@ const MAX_RETRY_MS = 60_000
  * changes that happened while disconnected aren't missed.
  *
  * In the desktop app the stream also carries the notifications, which the desktop shows.
+ *
+ * Returns whether the stream is open; ``undefined`` until the first connection opened or
+ * failed, and while disabled.
  */
-export function useLiveUpdates(enabled: boolean): void {
+export function useLiveUpdates(enabled: boolean): boolean | undefined {
   const queryClient = useQueryClient()
+  const [open, setOpen] = useState<boolean>()
 
   useEffect(() => {
     if (!enabled) return
@@ -42,6 +46,7 @@ export function useLiveUpdates(enabled: boolean): void {
       source = new EventSource(desktop ? "/api/events?notifications=true" : "/api/events")
 
       source.addEventListener("open", () => {
+        setOpen(true)
         retryDelay = INITIAL_RETRY_MS
         if (connected) void refreshReleases()
         connected = true
@@ -65,6 +70,8 @@ export function useLiveUpdates(enabled: boolean): void {
       })
 
       source.addEventListener("error", () => {
+        // Also while the browser reconnects by itself.
+        if (!stopped) setOpen(false)
         if (source?.readyState !== EventSource.CLOSED || stopped) return
         // Re-checking the session shows the sign-in screen (and disables this hook) if
         // the session expired; otherwise try again later.
@@ -79,6 +86,9 @@ export function useLiveUpdates(enabled: boolean): void {
       stopped = true
       clearTimeout(retryTimer)
       source?.close()
+      setOpen(undefined)
     }
   }, [enabled, queryClient])
+
+  return open
 }

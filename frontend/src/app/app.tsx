@@ -15,6 +15,7 @@ import { DesktopNotificationActions } from "@/features/releases/desktop-notifica
 import { InboxPage } from "@/features/releases/inbox-page"
 import { DesktopTraySync } from "@/features/sync/desktop-tray-sync"
 import { ThemeProvider } from "@/features/theme/provider"
+import { desktopStatus, useDesktopStatus } from "@/hooks/use-desktop-status"
 import { isView } from "@/lib/api/types"
 
 import { queryClient } from "./query-client"
@@ -56,7 +57,8 @@ export function App() {
 function AuthenticatedApp() {
   const me = useCurrentUser()
   const user = me.data
-  useLiveUpdates(Boolean(user))
+  const live = useLiveUpdates(Boolean(user))
+  useDesktopStatus(desktopStatus(me.isPending, me.isError, Boolean(user), live))
   useNotificationNavigation()
 
   if (me.isPending) return <FullPageSpinner />

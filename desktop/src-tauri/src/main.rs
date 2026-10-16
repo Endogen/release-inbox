@@ -8,6 +8,7 @@
 mod commands;
 mod config;
 mod notifications;
+mod status;
 mod tray;
 mod window;
 #[cfg(windows)]
@@ -26,6 +27,8 @@ pub struct AppState {
     pub allowed_origins: Mutex<HashSet<String>>,
     /// The inbox count the tray shows; `None` until the web app sent one.
     pub unread: Mutex<Option<u32>>,
+    /// Whether notifications can arrive, as the tray shows it.
+    pub connection: Mutex<status::Connection>,
 }
 
 /// Passed by the login item: the app starts in the tray, without showing its window.
@@ -53,6 +56,7 @@ fn main() {
             commands::connect,
             commands::show_notification,
             commands::set_unread_count,
+            commands::set_status,
         ])
         .setup(|app| {
             let handle = app.handle();

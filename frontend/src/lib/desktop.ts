@@ -44,6 +44,16 @@ export function setDesktopUnreadCount(count: number): Promise<void> {
   return call("set_unread_count", { count })
 }
 
+/**
+ * Whether the desktop gets notifications: only while signed in and connected to the event
+ * stream. The tray shows it, so the user notices when they stop.
+ */
+export type DesktopStatus = "connected" | "signed-out" | "disconnected"
+
+export function setDesktopStatus(status: DesktopStatus): Promise<void> {
+  return call("set_status", { status })
+}
+
 /** A button clicked on a notification about releases. */
 export interface DesktopAction {
   action: "mark-read" | "snooze" | "mute"

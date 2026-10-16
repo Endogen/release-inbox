@@ -185,6 +185,12 @@ newer: older servers don't send it notifications.
   and follow the same rules as the other channels: mutes, pre-releases, *Breaking only*. They
   need no setup on the server, but only reach a desktop app that is running; there's no queue
   for one that is offline. Clicking a notification opens its release.
+- They also need the server's app in the window to be signed in and connected. The tray's
+  tooltip and the first item of its menu show when it isn't: *Not connected* (the server
+  wasn't reachable, the connection dropped, or the setup page is open) or *Sign in to get
+  notifications* (the session ended). A page that doesn't report within 30 seconds of loading,
+  such as the web view's error page, counts as not connected. If that lasts 30 seconds while
+  the window is hidden, one notification says so; the next only after it was connected again.
 - Notifications about releases have buttons: *Mark as read*, *Snooze until tomorrow* (9:00) and
   *Mute repository*. They act on exactly the releases the notification is about; one about
   releases of several repositories has no *Mute*. The web app does the work with your session
@@ -199,9 +205,10 @@ newer: older servers don't send it notifications.
 | ---------------------------------------- | ------------------------------------------------------------ |
 | `desktop/setup`                          | The page that asks for the server's address                  |
 | `desktop/src-tauri/src/window.rs`        | The main window, close to tray, links, the server's rights   |
-| `desktop/src-tauri/src/tray.rs`          | Tray icon, its menu and the inbox dot                        |
+| `desktop/src-tauri/src/tray.rs`          | Tray icon, its menu, the inbox dot and the connection state  |
 | `desktop/src-tauri/src/notifications.rs` | Showing notifications, clicks and their buttons              |
-| `desktop/src-tauri/src/commands.rs`      | What the pages can call: connect, notifications, inbox count |
+| `desktop/src-tauri/src/status.rs`        | Whether notifications arrive; telling once when they don't   |
+| `desktop/src-tauri/src/commands.rs`      | What the pages can call: connect, notify, inbox count, state |
 | `desktop/src-tauri/src/config.rs`        | The app's settings (server address) in its config folder     |
 | `frontend/src/lib/desktop.ts`            | The web app's side: detects the desktop app and talks to it  |
 

@@ -104,6 +104,21 @@ describe("useLiveUpdates", () => {
     expect(FakeEventSource.instances).toHaveLength(3)
   })
 
+  it("tells whether the stream is open", () => {
+    const { hook } = setup()
+    expect(hook.result.current).toBeUndefined()
+
+    act(() => latest().emit("open"))
+    expect(hook.result.current).toBe(true)
+    // The browser reconnects by itself: not open meanwhile.
+    act(() => latest().emit("error"))
+    expect(hook.result.current).toBe(false)
+    act(() => latest().fail())
+    act(() => vi.advanceTimersByTime(2000))
+    act(() => latest().emit("open"))
+    expect(hook.result.current).toBe(true)
+  })
+
   it("tracks sync progress and ignores malformed events", () => {
     const { queryClient } = setup()
     const status: SyncStatus = {

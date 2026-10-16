@@ -3,12 +3,12 @@
 
 use tauri::ipc::CapabilityBuilder;
 use tauri::utils::config::BackgroundThrottlingPolicy;
-use tauri::webview::NewWindowResponse;
+use tauri::webview::{NewWindowResponse, PageLoadEvent};
 use tauri::{AppHandle, Manager, Url, Webview, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 
-use crate::{AppState, config, tray};
+use crate::{AppState, config, status, tray};
 
 pub const MAIN: &str = "main";
 
@@ -48,6 +48,7 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
     };
     let navigation_app = app.clone();
     let new_window_app = app.clone();
+    let page_load_app = app.clone();
     let tray_only = uses_tray_only(app);
     #[cfg(target_os = "macos")]
     set_tray_only(app, tray_only)?;
@@ -67,6 +68,12 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
             open_in_browser(&new_window_app, &url);
             NewWindowResponse::Deny
         })
+        // Also a reload, or the web view's error page in place of the server's app.
+        .on_page_load(move |_window, payload| {
+            if payload.event() == PageLoadEvent::Started {
+                let _ = status::page_loading(&page_load_app, payload.url());
+            }
+        })
         .build()?;
 
     let close_app = app.clone();
@@ -76,7 +83,7 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
             close_to_tray(&close_app);
         }
     });
-    Ok(())
+    status::page_loading(app, &server.cloned().unwrap_or_else(setup_url))
 }
 
 /// Whether the window may show `url`: the setup page and the server's pages. The server's
@@ -164,7 +171,8 @@ fn allow_server(app: &AppHandle, server: &Url) -> tauri::Result<()> {
             .permission("core:event:allow-listen")
             .permission("core:event:allow-unlisten")
             .permission("allow-show-notification")
-            .permission("allow-set-unread-count"),
+            .permission("allow-set-unread-count")
+            .permission("allow-set-status"),
     )
 }
 
@@ -177,8 +185,10 @@ pub fn navigate(app: &AppHandle, server: Option<&Url>) -> tauri::Result<()> {
         }
         None => setup_url(),
     };
-    // The page that is left can't clear its count any more; the next one sets its own.
+    // The page that is left can't clear its count any more, or report that it no longer
+    // connects; the next one sets its own.
     tray::set_unread(app, 0)?;
+    status::page_loading(app, &target)?;
     let window = app
         .get_webview_window(MAIN)
         .ok_or(tauri::Error::WindowNotFound)?;
@@ -229,6 +239,13 @@ pub fn show(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+/// Whether the user doesn't see the window: in the tray, or minimized.
+pub fn is_hidden(app: &AppHandle) -> bool {
+    app.get_webview_window(MAIN).is_none_or(|window| {
+        !window.is_visible().unwrap_or(false) || window.is_minimized().unwrap_or(false)
+    })
 }
 
 fn hide(app: &AppHandle) {

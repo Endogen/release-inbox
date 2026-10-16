@@ -8,6 +8,7 @@ fn main() {
             "connect",
             "show_notification",
             "set_unread_count",
+            "set_status",
         ]),
     ))
     .expect("failed to run tauri-build");

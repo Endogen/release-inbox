@@ -1,9 +1,10 @@
 //! Commands the web pages call: the setup page to choose the server, the server's app to show
-//! notifications and the number of inbox entries.
+//! notifications, the number of inbox entries and whether notifications can arrive.
 
 use tauri::{AppHandle, Webview};
 
 use crate::notifications::{self, ServerNotification};
+use crate::status::{self, Status};
 use crate::{config, tray, window};
 
 #[tauri::command]
@@ -40,4 +41,11 @@ pub fn show_notification(
 pub fn set_unread_count(app: AppHandle, webview: Webview, count: u32) -> Result<(), String> {
     window::require_server_page(&app, &webview)?;
     tray::set_unread(&app, count).map_err(|error| error.to_string())
+}
+
+/// What the server's app reports: signed in and connected, signed out or disconnected.
+#[tauri::command]
+pub fn set_status(app: AppHandle, webview: Webview, status: Status) -> Result<(), String> {
+    window::require_server_page(&app, &webview)?;
+    status::set(&app, status).map_err(|error| error.to_string())
 }

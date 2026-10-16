@@ -1,5 +1,6 @@
-//! The tray icon: opens the window, shows whether the inbox has entries and offers the app's
-//! menu. It stays after the window is closed, until the user quits.
+//! The tray icon: opens the window, shows whether notifications can arrive and whether the
+//! inbox has entries, and offers the app's menu. It stays after the window is closed, until
+//! the user quits.
 
 use std::sync::OnceLock;
 
@@ -9,6 +10,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::status::Status;
 use crate::{AppState, config, window};
 
 const TRAY: &str = "tray";
@@ -18,7 +20,17 @@ const TEMPLATE_ICON: &[u8] = include_bytes!("../icons/tray-template.png");
 /// Asks the web app to sync; it does the work with its signed-in session.
 const SYNC_EVENT: &str = "desktop://sync";
 
+/// The menu's first item, which only shows whether notifications can arrive.
+struct StatusItem(MenuItem<tauri::Wry>);
+
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    let status = MenuItem::with_id(
+        app,
+        "status",
+        Status::default().describe(),
+        false,
+        None::<&str>,
+    )?;
     let autostart = CheckMenuItem::with_id(
         app,
         "autostart",
@@ -38,6 +50,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
         &[
+            &status,
+            &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "open", "Open Releases", true, None::<&str>)?,
             &MenuItem::with_id(app, "sync", "Sync now", true, None::<&str>)?,
             &MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?,
@@ -58,12 +72,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         uses_monochrome(app),
         None::<&str>,
     )?;
+    // Right after "Start at login", below the status line and its separator.
     #[cfg(any(target_os = "macos", windows))]
-    menu.insert(&monochrome, 5)?;
+    menu.insert(&monochrome, 7)?;
     TrayIconBuilder::with_id(TRAY)
         .icon(current_icon(0, uses_monochrome(app)).clone())
         .icon_as_template(uses_monochrome(app))
-        .tooltip(tooltip(0))
+        .tooltip(tooltip(0, Status::default()))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -98,7 +113,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         .build(app)?;
     #[cfg(windows)]
     watch_taskbar_theme(app);
-    Ok(())
+    app.manage(StatusItem(status));
+    refresh(app)
 }
 
 fn starts_at_login(app: &AppHandle) -> bool {
@@ -225,9 +241,8 @@ pub fn set_unread(app: &AppHandle, count: u32) -> tauri::Result<()> {
     if !changed {
         return Ok(());
     }
-    if let Some(tray) = app.tray_by_id(TRAY) {
-        tray.set_tooltip(Some(tooltip(count)))?;
-    }
+    // The tooltip, with the connection state, and the icon, colour or monochrome.
+    refresh(app)?;
     update_icon(app, count)?;
     if let Some(window) = app.get_webview_window(window::MAIN) {
         #[cfg(not(windows))]
@@ -238,11 +253,31 @@ pub fn set_unread(app: &AppHandle, count: u32) -> tauri::Result<()> {
     Ok(())
 }
 
-fn tooltip(count: u32) -> String {
-    match count {
-        0 => "Releases".to_owned(),
-        1 => "Releases · 1 entry in the inbox".to_owned(),
-        count => format!("Releases · {count} entries in the inbox"),
+/// Shows the state of the connection and the inbox count in the tooltip and the menu.
+pub fn refresh(app: &AppHandle) -> tauri::Result<()> {
+    let (count, status) = {
+        let state = app.state::<AppState>();
+        let count = state.unread.lock().unwrap().unwrap_or(0);
+        let status = state.connection.lock().unwrap().status();
+        (count, status)
+    };
+    if let Some(item) = app.try_state::<StatusItem>() {
+        item.0.set_text(status.describe())?;
+    }
+    if let Some(tray) = app.tray_by_id(TRAY) {
+        tray.set_tooltip(Some(tooltip(count, status)))?;
+    }
+    Ok(())
+}
+
+/// The inbox count while connected; otherwise why notifications don't arrive, as the count
+/// may be out of date.
+fn tooltip(count: u32, status: Status) -> String {
+    match (status, count) {
+        (Status::Connected, 0) => "Releases".to_owned(),
+        (Status::Connected, 1) => "Releases · 1 entry in the inbox".to_owned(),
+        (Status::Connected, count) => format!("Releases · {count} entries in the inbox"),
+        (status, _) => format!("Releases · {}", status.describe()),
     }
 }
 
@@ -403,9 +438,24 @@ mod tests {
 
     #[test]
     fn counts_entries_in_the_tooltip() {
-        assert_eq!(tooltip(0), "Releases");
-        assert_eq!(tooltip(1), "Releases · 1 entry in the inbox");
-        assert_eq!(tooltip(7), "Releases · 7 entries in the inbox");
+        assert_eq!(tooltip(0, Status::Connected), "Releases");
+        assert_eq!(
+            tooltip(1, Status::Connected),
+            "Releases · 1 entry in the inbox"
+        );
+        assert_eq!(
+            tooltip(7, Status::Connected),
+            "Releases · 7 entries in the inbox"
+        );
+    }
+
+    #[test]
+    fn says_why_notifications_dont_arrive_instead() {
+        assert_eq!(tooltip(7, Status::Disconnected), "Releases · Not connected");
+        assert_eq!(
+            tooltip(0, Status::SignedOut),
+            "Releases · Sign in to get notifications"
+        );
     }
 
     #[test]
