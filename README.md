@@ -91,6 +91,7 @@ frontend/   React 19 + TypeScript + Vite, shadcn/ui (Radix, Tailwind CSS v4), Ta
 backend/    FastAPI, SQLAlchemy 2 (async) on SQLite, Alembic, httpx, pywebpush, Anthropic SDK
 deploy/     systemd units (service and daily backup), nginx site and environment template
 desktop/    Tauri 2 desktop app (Rust): native window, tray and notifications around the web app
+website/    Project website (Next.js 16, shadcn/ui), exported statically to GitHub Pages
 ```
 
 In production nginx serves the built frontend and proxies `/api` to a single uvicorn process.

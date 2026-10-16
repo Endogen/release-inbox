@@ -1,0 +1,223 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-brand: var(--brand);
+  --color-brand-soft: var(--brand-soft);
+  --color-warning: var(--warning);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+
+  --animate-drift: drift 40s linear infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-blink: blink 1.6s ease-in-out infinite;
+  --animate-key: key 4.8s ease-in-out infinite;
+
+  @keyframes drift {
+    to {
+      transform: translateY(-50%);
+    }
+  }
+  @keyframes float {
+    50% {
+      transform: translateY(-6px);
+    }
+  }
+  @keyframes blink {
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @keyframes key {
+    0%,
+    20%,
+    100% {
+      transform: translateY(0);
+      box-shadow: inset 0 -2px 0 var(--border);
+    }
+    8% {
+      transform: translateY(2px);
+      box-shadow: inset 0 0 0 var(--border);
+      border-color: var(--brand);
+      color: var(--brand);
+    }
+  }
+}
+
+/* The app's indigo is the one accent; the rest stays neutral, as in the app itself. */
+:root {
+  --background: oklch(0.995 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.511 0.262 276.966);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.967 0.001 286.375);
+  --muted-foreground: oklch(0.52 0.016 285.938);
+  --accent: oklch(0.962 0.018 272.314);
+  --accent-foreground: oklch(0.359 0.144 278.697);
+  --destructive: oklch(0.577 0.245 27.325);
+  --warning: oklch(0.666 0.179 58.318);
+  --border: oklch(0.92 0.004 286.32);
+  --input: oklch(0.92 0.004 286.32);
+  --ring: oklch(0.585 0.233 277.117);
+  --brand: oklch(0.511 0.262 276.966);
+  --brand-soft: oklch(0.585 0.233 277.117 / 18%);
+  --glow: oklch(0.585 0.233 277.117 / 22%);
+  --grid: oklch(0.145 0 0 / 7%);
+  --gradient-end: oklch(0.62 0.22 300);
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: oklch(0.13 0.004 285.823);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.17 0.005 285.823);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.19 0.006 285.885);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.585 0.233 277.117);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.24 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.24 0.006 286.033);
+  --muted-foreground: oklch(0.705 0.015 286.067);
+  --accent: oklch(0.257 0.09 281.288);
+  --accent-foreground: oklch(0.87 0.065 274.039);
+  --destructive: oklch(0.704 0.191 22.216);
+  --warning: oklch(0.828 0.189 84.429);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.673 0.182 276.935);
+  --brand: oklch(0.673 0.182 276.935);
+  --brand-soft: oklch(0.585 0.233 277.117 / 22%);
+  --glow: oklch(0.585 0.233 277.117 / 32%);
+  --grid: oklch(1 0 0 / 6%);
+  --gradient-end: oklch(0.75 0.16 300);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply scroll-smooth font-sans;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: var(--brand-soft);
+  }
+}
+
+@layer utilities {
+  /* A dot grid that fades out toward the edges. */
+  .bg-dots {
+    background-image: radial-gradient(var(--grid) 1px, transparent 1px);
+    background-size: 22px 22px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 30%, transparent 75%);
+  }
+  /* The soft indigo light behind the hero and the downloads. */
+  .bg-aurora {
+    background:
+      radial-gradient(40% 50% at 50% 0%, var(--glow), transparent 70%),
+      radial-gradient(30% 40% at 85% 20%, oklch(0.7 0.15 230 / 12%), transparent 70%),
+      radial-gradient(30% 40% at 15% 30%, oklch(0.65 0.2 300 / 10%), transparent 70%);
+    /* Fades out on every side, so the box it fills never shows an edge. */
+    mask-image: radial-gradient(ellipse 60% 60% at 50% 40%, black 30%, transparent 100%);
+  }
+  /* A 1px highlight along a card's top edge. */
+  .edge-highlight {
+    box-shadow: inset 0 1px 0 0 oklch(1 0 0 / 6%);
+  }
+  .text-gradient {
+    /* Colors only as variables: a literal oklch() makes the build add a fallback that
+       repeats the background shorthand, which resets the clip. */
+    background-image: linear-gradient(
+      100deg,
+      var(--foreground) 10%,
+      var(--brand) 55%,
+      var(--gradient-end) 90%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    /* Keeps descenders inside the painted area. */
+    padding-bottom: 0.08em;
+  }
+  .mask-fade-y {
+    mask-image: linear-gradient(to bottom, transparent, black 15%, black 85%, transparent);
+  }
+}
+
+/* Sections rise in once when they scroll into view (see components/reveal.tsx). */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.2, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+[data-reveal="visible"] {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

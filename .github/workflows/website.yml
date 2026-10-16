@@ -1,0 +1,62 @@
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - website/**
+      - .github/workflows/website.yml
+  # Rebuilt for every release, so the download links point to the newest files.
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time; a newer one waits instead of cancelling a running deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - id: pages
+        uses: actions/configure-pages@v6
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          # The site lives under /<repository>/ on GitHub Pages.
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          # Reads the newest release and star count without hitting the anonymous rate limit.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_TELEMETRY_DISABLED: 1
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: website/out
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
