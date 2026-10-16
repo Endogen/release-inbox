@@ -48,7 +48,13 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_opener::Builder::new()
+                // Rust navigation handlers open external links. The plugin's JS interceptor
+                // would cancel _blank clicks and invoke a command remote pages can't use.
+                .open_js_links_on_click(false)
+                .build(),
+        )
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             commands::server_url,
