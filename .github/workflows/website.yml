@@ -6,9 +6,11 @@ on:
     paths:
       - website/**
       - .github/workflows/website.yml
-  # Rebuilt for every release, so the download links point to the newest files.
-  release:
-    types: [published]
+  # Rebuild after release installers are uploaded, from the default branch allowed
+  # by the github-pages environment (a release event runs on its tag instead).
+  workflow_run:
+    workflows: [Desktop]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,10 @@ concurrency:
 jobs:
   build:
     name: Build
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.event == 'release' &&
+       github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     defaults:
       run:
