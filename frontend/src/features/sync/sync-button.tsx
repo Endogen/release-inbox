@@ -3,7 +3,9 @@ import { RefreshCwIcon, TriangleAlertIcon } from "lucide-react"
 
 import { Hint } from "@/components/hint"
 import { Button } from "@/components/ui/button"
+import { useHotkeys } from "@/hooks/use-hotkeys"
 import { useNow } from "@/hooks/use-now"
+import { HOTKEYS } from "@/lib/hotkeys"
 import { formatRelative } from "@/lib/time"
 
 import { useSync } from "./api"
@@ -11,6 +13,7 @@ import { useSync } from "./api"
 export function SyncButton() {
   const now = useNow()
   const { status, inProgress, syncNow } = useSync()
+  useHotkeys({ [HOTKEYS.sync]: syncNow })
   const failed = Boolean(status?.last_error) && !inProgress
 
   const label = inProgress
@@ -22,11 +25,12 @@ export function SyncButton() {
         : "Sync now"
 
   return (
-    <Hint label={label} className="max-w-72">
+    <Hint label={label} hotkey={HOTKEYS.sync} className="max-w-72">
       <Button
         variant="ghost"
         size="icon"
         aria-label="Sync now"
+        aria-keyshortcuts="Shift+R"
         aria-busy={inProgress}
         onClick={syncNow}
       >

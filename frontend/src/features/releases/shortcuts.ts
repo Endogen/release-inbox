@@ -21,6 +21,7 @@ export const SHORTCUTS: ReadonlyArray<{ keys: readonly string[]; description: st
     description: `${viewLabels.slice(0, -1).join(", ")} or ${viewLabels.at(-1)}`,
   },
   { keys: [HOTKEYS.search], description: "Search" },
+  { keys: [HOTKEYS.sync], description: "Sync now" },
   { keys: [HOTKEYS.close], description: "Close the release" },
   { keys: [HOTKEYS.help], description: "Show keyboard shortcuts" },
 ]

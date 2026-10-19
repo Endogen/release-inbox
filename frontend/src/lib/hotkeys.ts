@@ -10,6 +10,7 @@ export const HOTKEYS = {
   open: "o",
   copyLink: "c",
   nextTab: "r",
+  sync: "R",
   search: "/",
   close: "Escape",
   help: "?",
@@ -17,5 +18,6 @@ export const HOTKEYS = {
 
 /** How a key is shown in hints. */
 export function keyLabel(key: string): string {
+  if (/^[A-Z]$/.test(key)) return `Shift + ${key}`
   return key === "Escape" ? "Esc" : key
 }
