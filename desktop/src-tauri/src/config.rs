@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Url};
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     /// The server's address, as returned by [`normalize_server_url`].
@@ -15,8 +15,20 @@ pub struct Config {
     pub tray_hint_shown: bool,
     /// Use a monochrome tray icon on macOS and Windows.
     pub monochrome_tray_icon: bool,
-    /// Hide the Dock/taskbar icon while keeping the app accessible from its tray icon.
-    pub tray_only: bool,
+    /// Keep a tray icon and allow closing/hiding the window into it.
+    pub tray_enabled: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            server_url: None,
+            tray_hint_shown: false,
+            monochrome_tray_icon: false,
+            // Every older installation had a tray, regardless of its old tray_only setting.
+            tray_enabled: true,
+        }
+    }
 }
 
 impl Config {
@@ -126,7 +138,7 @@ mod tests {
         assert_eq!(config.server_url().unwrap().as_str(), "https://a.example/");
         assert!(!config.tray_hint_shown);
         assert!(!config.monochrome_tray_icon);
-        assert!(!config.tray_only);
+        assert!(config.tray_enabled);
     }
 
     #[test]
@@ -134,11 +146,33 @@ mod tests {
         let mut config = Config::default();
         config.set_server_url(&Url::parse("https://a.example/").unwrap());
         config.monochrome_tray_icon = true;
-        config.tray_only = true;
+        config.tray_enabled = false;
         let saved = serde_json::to_string(&config).unwrap();
         let restored: Config = serde_json::from_str(&saved).unwrap();
         assert!(restored.monochrome_tray_icon);
-        assert!(restored.tray_only);
+        assert!(!restored.tray_enabled);
         assert_eq!(restored.server_url(), config.server_url());
+    }
+
+    #[test]
+    fn old_taskbar_preference_does_not_disable_the_tray() {
+        for tray_only in [true, false] {
+            let config: Config = serde_json::from_value(serde_json::json!({
+                "tray_only": tray_only,
+                "tray_hint_shown": true,
+                "monochrome_tray_icon": true,
+            }))
+            .unwrap();
+            assert!(config.tray_enabled);
+            assert!(config.tray_hint_shown);
+            assert!(config.monochrome_tray_icon);
+            assert!(
+                !serde_json::to_value(config)
+                    .unwrap()
+                    .as_object()
+                    .unwrap()
+                    .contains_key("tray_only")
+            );
+        }
     }
 }

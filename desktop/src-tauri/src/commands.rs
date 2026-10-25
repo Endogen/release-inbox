@@ -1,6 +1,7 @@
 //! Commands the web pages call: the setup page to choose the server, the server's app to show
 //! notifications, the number of inbox entries and whether notifications can arrive.
 
+use serde::Serialize;
 use tauri::{AppHandle, Webview};
 
 use crate::notifications::{self, ServerNotification};
@@ -48,4 +49,30 @@ pub fn set_unread_count(app: AppHandle, webview: Webview, count: u32) -> Result<
 pub fn set_status(app: AppHandle, webview: Webview, status: Status) -> Result<(), String> {
     window::require_server_page(&app, &webview)?;
     status::set(&app, status).map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+pub struct DesktopSettings {
+    tray_enabled: bool,
+}
+
+#[tauri::command]
+pub fn desktop_settings(app: AppHandle, webview: Webview) -> Result<DesktopSettings, String> {
+    window::require_server_page(&app, &webview)?;
+    Ok(DesktopSettings {
+        tray_enabled: tray::is_enabled(&app),
+    })
+}
+
+#[tauri::command]
+pub fn set_tray_enabled(
+    app: AppHandle,
+    webview: Webview,
+    enabled: bool,
+) -> Result<DesktopSettings, String> {
+    window::require_server_page(&app, &webview)?;
+    tray::set_enabled(&app, enabled)?;
+    Ok(DesktopSettings {
+        tray_enabled: tray::is_enabled(&app),
+    })
 }

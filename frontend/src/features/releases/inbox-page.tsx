@@ -1,8 +1,11 @@
 import { cn } from "cn"
+import { ArrowLeftIcon } from "lucide-react"
 import { lazy, Suspense, useRef, useState } from "react"
 import { useDefaultLayout } from "react-resizable-panels"
 
 import { ErrorBoundary } from "@/components/error-boundary"
+import { ErrorState } from "@/components/error-state"
+import { Button } from "@/components/ui/button"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable"
 import { AppHeader } from "@/features/shell/app-header"
 import { usePreferences } from "@/features/preferences/api"
@@ -149,69 +152,95 @@ export function InboxPage({ username }: { username: string }) {
         <SyncBanner />
       </div>
       <ErrorBoundary key={view} fallback={(reset) => <PaneError onRetry={reset} />}>
-        <ReleaseList
-          view={view}
-          search={route.search}
-          items={items}
-          selectedRepositoryId={selected?.repository.id}
-          isLoading={list.isPending}
-          hasNextPage={list.hasNextPage}
-          isFetchingNextPage={list.isFetchingNextPage}
-          onLoadMore={list.fetchNextPage}
-          onSelect={openRelease}
-          onMarkRead={rowActions ? markReadFromList : undefined}
-          onUnsubscribe={rowActions ? unsubscribeFromList : undefined}
-          onCopyLink={copyLinkFromList}
-        />
+        {list.isError && !list.data ? (
+          <ErrorState
+            className="flex-1"
+            title="Couldn't load releases"
+            description="The server didn't respond. Try again in a moment."
+            onAction={() => void list.refetch()}
+          />
+        ) : (
+          <ReleaseList
+            view={view}
+            search={route.search}
+            items={items}
+            selectedRepositoryId={selected?.repository.id}
+            isLoading={list.isPending}
+            hasNextPage={list.hasNextPage}
+            isFetchingNextPage={list.isFetchingNextPage}
+            onLoadMore={list.fetchNextPage}
+            onSelect={openRelease}
+            onMarkRead={rowActions ? markReadFromList : undefined}
+            onUnsubscribe={rowActions ? unsubscribeFromList : undefined}
+            onCopyLink={copyLinkFromList}
+          />
+        )}
       </ErrorBoundary>
     </section>
   )
 
-  const detailContent = selected ? (
-    <ReleaseDetail
-      release={selected}
-      body={selected.id === current?.id ? current.body : undefined}
-      whatsNewCount={whatsNewCount}
-      search={route.search}
-      contentTab={contentTab.tab}
-      onContentTabChange={contentTab.choose}
-      onSelectRelease={(id) => route.selectRelease(id)}
-      onBack={isDesktop ? undefined : route.closeRelease}
-      focusOnOpen={!isDesktop}
-      showStars={!isDesktop && display.stars}
-      hidden={
-        current && preferences
-          ? {
-              rules: current.hide_rules,
-              asPrerelease: current.prerelease && preferences.prereleases === "hide",
-            }
-          : undefined
-      }
-      onOpenSettings={route.openSettings}
-      snoozeMenuOpen={snoozeMenuFor === selected.id}
-      onSnoozeMenuOpenChange={(open) => setSnoozeMenuFor(open ? selected.id : null)}
-      pending={{
-        markRead: actions.isPending.markRead(selected),
-        unsubscribe: actions.isPending.unsubscribe(selected.repository),
-      }}
-      actions={{
-        onToggleNotifications: () => actions.toggleNotifications(selected),
-        onMarkRead: () => actions.markRead(selected),
-        onMarkUnread: () => actions.markUnread(selected),
-        onHide: () => setHideTarget(selected),
-        onUnsubscribe: () => actions.unsubscribe(selected),
-        onSnooze: (until) => actions.snooze(selected, until),
-        onUnsnooze: () => actions.unsnooze(selected),
-        onCopyLink: () => actions.copyLink(selected),
-      }}
-    />
-  ) : route.releaseId !== null && detail.isPending ? (
-    <DetailSkeleton />
-  ) : route.releaseId !== null && detail.isError ? (
-    <MissingRelease error={detail.error} onRetry={() => void detail.refetch()} />
-  ) : (
-    <NoSelection />
-  )
+  // List entries have no notes: they must not mask a failed detail request. Keep usable
+  // cached details visible when only a background refresh failed.
+  const detailContent =
+    route.releaseId !== null && detail.isError && !current ? (
+      <div className="flex h-full min-h-0 flex-col">
+        {!isDesktop && (
+          <div className="px-6 pt-5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to list"
+              onClick={route.closeRelease}
+            >
+              <ArrowLeftIcon />
+            </Button>
+          </div>
+        )}
+        <MissingRelease error={detail.error} onRetry={() => void detail.refetch()} />
+      </div>
+    ) : selected ? (
+      <ReleaseDetail
+        release={selected}
+        body={selected.id === current?.id ? current.body : undefined}
+        whatsNewCount={whatsNewCount}
+        search={route.search}
+        contentTab={contentTab.tab}
+        onContentTabChange={contentTab.choose}
+        onSelectRelease={(id) => route.selectRelease(id)}
+        onBack={isDesktop ? undefined : route.closeRelease}
+        focusOnOpen={!isDesktop}
+        showStars={!isDesktop && display.stars}
+        hidden={
+          current && preferences
+            ? {
+                rules: current.hide_rules,
+                asPrerelease: current.prerelease && preferences.prereleases === "hide",
+              }
+            : undefined
+        }
+        onOpenSettings={route.openSettings}
+        snoozeMenuOpen={snoozeMenuFor === selected.id}
+        onSnoozeMenuOpenChange={(open) => setSnoozeMenuFor(open ? selected.id : null)}
+        pending={{
+          markRead: actions.isPending.markRead(selected),
+          unsubscribe: actions.isPending.unsubscribe(selected.repository),
+        }}
+        actions={{
+          onToggleNotifications: () => actions.toggleNotifications(selected),
+          onMarkRead: () => actions.markRead(selected),
+          onMarkUnread: () => actions.markUnread(selected),
+          onHide: () => setHideTarget(selected),
+          onUnsubscribe: () => actions.unsubscribe(selected),
+          onSnooze: (until) => actions.snooze(selected, until),
+          onUnsnooze: () => actions.unsnooze(selected),
+          onCopyLink: () => actions.copyLink(selected),
+        }}
+      />
+    ) : route.releaseId !== null && detail.isPending ? (
+      <DetailSkeleton />
+    ) : (
+      <NoSelection />
+    )
   const detailPane = (
     // A failure resets with the next repository; switching versions keeps the pane mounted.
     <ErrorBoundary

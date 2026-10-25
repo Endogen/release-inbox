@@ -11,7 +11,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { isDesktop } from "@/lib/desktop"
 
+import { DesktopSettings } from "./desktop-settings"
 import { DisplayOptions } from "./display-options"
 import { InboxSettings } from "./inbox-settings"
 import { NotificationSettings } from "./notification-settings"
@@ -60,6 +62,12 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
           <InboxSettings />
           <Separator />
           <DisplayOptions />
+          {isDesktop() && (
+            <>
+              <Separator />
+              <DesktopSettings />
+            </>
+          )}
         </div>
       </SheetContent>
     </Sheet>

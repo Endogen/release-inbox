@@ -1,5 +1,5 @@
 //! The main window: the bundled setup page until a server is chosen, then the server's app.
-//! Closing it only hides it, so the app keeps running in the tray.
+//! Closing it hides it when the tray is enabled; otherwise it quits the app.
 
 use tauri::ipc::CapabilityBuilder;
 use tauri::utils::config::BackgroundThrottlingPolicy;
@@ -49,16 +49,16 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
     let navigation_app = app.clone();
     let new_window_app = app.clone();
     let page_load_app = app.clone();
-    let tray_only = uses_tray_only(app);
+    let skip_taskbar = tray::is_enabled(app) && !visible;
     #[cfg(target_os = "macos")]
-    set_tray_only(app, tray_only)?;
+    set_taskbar_visible(app, !skip_taskbar)?;
     let window = WebviewWindowBuilder::new(app, MAIN, start)
         .title("Releases")
         .inner_size(1280.0, 820.0)
         .min_inner_size(380.0, 520.0)
         .visible(visible)
         // macOS uses the application's activation policy instead (see above).
-        .skip_taskbar(tray_only)
+        .skip_taskbar(skip_taskbar)
         // The page keeps receiving notifications while the window is in the tray. Only macOS
         // lets the app turn off the throttling of hidden pages.
         .background_throttling(BackgroundThrottlingPolicy::Disabled)
@@ -80,7 +80,11 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
-            close_to_tray(&close_app);
+            if tray::is_enabled(&close_app) {
+                close_to_tray(&close_app);
+            } else {
+                close_app.exit(0);
+            }
         }
     });
     status::page_loading(app, &server.cloned().unwrap_or_else(setup_url))
@@ -172,7 +176,9 @@ fn allow_server(app: &AppHandle, server: &Url) -> tauri::Result<()> {
             .permission("core:event:allow-unlisten")
             .permission("allow-show-notification")
             .permission("allow-set-unread-count")
-            .permission("allow-set-status"),
+            .permission("allow-set-status")
+            .permission("allow-desktop-settings")
+            .permission("allow-set-tray-enabled"),
     )
 }
 
@@ -197,47 +203,36 @@ pub fn navigate(app: &AppHandle, server: Option<&Url>) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn uses_tray_only(app: &AppHandle) -> bool {
-    app.state::<AppState>().config.lock().unwrap().tray_only
-}
-
-/// Changes Dock/taskbar presence without closing the window or affecting the tray.
-pub fn set_tray_only(app: &AppHandle, enabled: bool) -> tauri::Result<()> {
+/// The taskbar/Dock tracks explicit hiding to the tray, not ordinary minimization.
+fn set_taskbar_visible(app: &AppHandle, visible: bool) -> tauri::Result<()> {
     #[cfg(target_os = "macos")]
     {
-        let window = app.get_webview_window(MAIN);
-        let visible = window
-            .as_ref()
-            .is_some_and(|w| w.is_visible().unwrap_or(false));
-        let focused = window
-            .as_ref()
-            .is_some_and(|w| w.is_focused().unwrap_or(false));
-        app.set_activation_policy(if enabled {
-            tauri::ActivationPolicy::Accessory
-        } else {
+        app.set_activation_policy(if visible {
             tauri::ActivationPolicy::Regular
-        })?;
-        // Switching application policies can hide its windows. Preserve the open window,
-        // but leave a window that was already in the tray hidden.
-        if visible && let Some(window) = window {
-            window.show()?;
-            if focused {
-                window.set_focus()?;
-            }
-        }
-        Ok(())
+        } else {
+            tauri::ActivationPolicy::Accessory
+        })
     }
     #[cfg(not(target_os = "macos"))]
     app.get_webview_window(MAIN)
         .ok_or(tauri::Error::WindowNotFound)?
-        .set_skip_taskbar(enabled)
+        .set_skip_taskbar(!visible)
+}
+
+/// Restore the taskbar/Dock first: changing macOS activation policy may hide windows.
+pub fn try_show(app: &AppHandle) -> tauri::Result<()> {
+    let window = app
+        .get_webview_window(MAIN)
+        .ok_or(tauri::Error::WindowNotFound)?;
+    set_taskbar_visible(app, true)?;
+    window.unminimize()?;
+    window.show()?;
+    window.set_focus()
 }
 
 pub fn show(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+    if let Err(error) = try_show(app) {
+        eprintln!("Couldn't show the window: {error}");
     }
 }
 
@@ -248,10 +243,20 @@ pub fn is_hidden(app: &AppHandle) -> bool {
     })
 }
 
-fn hide(app: &AppHandle) {
-    if let Some(window) = app.get_webview_window(MAIN) {
-        let _ = window.hide();
+fn hide(app: &AppHandle) -> tauri::Result<()> {
+    // Never hide the only way back into the app.
+    if !tray::is_enabled(app) {
+        return Ok(());
     }
+    let window = app
+        .get_webview_window(MAIN)
+        .ok_or(tauri::Error::WindowNotFound)?;
+    window.hide()?;
+    if let Err(error) = set_taskbar_visible(app, false) {
+        show(app);
+        return Err(error);
+    }
+    Ok(())
 }
 
 /// A single tray click shows a hidden/minimized window or hides an open one.
@@ -260,14 +265,17 @@ pub fn toggle(app: &AppHandle) {
     // Visibility, rather than focus, determines which action the user expects.
     if is_hidden(app) {
         show(app);
-    } else {
-        hide(app);
+    } else if let Err(error) = hide(app) {
+        eprintln!("Couldn't hide the window: {error}");
     }
 }
 
 /// Closing the window hides it; the first time, a notification says where the app went.
 fn close_to_tray(app: &AppHandle) {
-    hide(app);
+    if let Err(error) = hide(app) {
+        eprintln!("Couldn't close to the tray: {error}");
+        return;
+    }
     let first_time = {
         let state = app.state::<AppState>();
         let mut config = state.config.lock().unwrap();

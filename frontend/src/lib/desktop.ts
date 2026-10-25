@@ -54,6 +54,20 @@ export function setDesktopStatus(status: DesktopStatus): Promise<void> {
   return call("set_status", { status })
 }
 
+/** Native preferences belong to this installation, not the server account. */
+export interface DesktopSettings {
+  tray_enabled: boolean
+}
+
+export function getDesktopSettings(): Promise<DesktopSettings> {
+  return invoke("desktop_settings")
+}
+
+/** Unlike background status updates, failures must reach the settings UI. */
+export function setDesktopTrayEnabled(enabled: boolean): Promise<DesktopSettings> {
+  return invoke("set_tray_enabled", { enabled })
+}
+
 /** A button clicked on a notification about releases. */
 export interface DesktopAction {
   action: "mark-read" | "snooze" | "mute"

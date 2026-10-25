@@ -1,4 +1,4 @@
-import { memo, useMemo, type MouseEvent } from "react"
+import { memo, useMemo, useRef, type MouseEvent } from "react"
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown"
 import rehypeRaw from "rehype-raw"
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize"
@@ -25,9 +25,17 @@ const SANITIZE_SCHEMA = {
 // Footnote ids must not get remark's own prefix; sanitising adds "user-content-" once.
 const REMARK_REHYPE_OPTIONS = { clobberPrefix: "" }
 
-function scrollToAnchor(event: MouseEvent<HTMLAnchorElement>, href: string) {
+function scrollToAnchor(
+  event: MouseEvent<HTMLAnchorElement>,
+  href: string,
+  root: HTMLElement | null
+) {
   // Scroll inside the pane without touching the app's URL (the router owns it).
-  const target = document.getElementById(anchorTarget(href))
+  // "What's new" renders several documents whose headings and footnotes can share IDs.
+  const id = anchorTarget(href)
+  const target = Array.from(root?.querySelectorAll<HTMLElement>("[id]") ?? []).find(
+    (element) => element.id === id
+  )
   if (!target) return
   event.preventDefault()
   target.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -51,12 +59,17 @@ export const Markdown = memo(function Markdown({
   content,
   baseUrls: { links, images, imageQuery },
 }: MarkdownProps) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const baseUrls = useMemo(() => ({ links, images, imageQuery }), [links, images, imageQuery])
   const components = useMemo<Components>(
     () => ({
       a: ({ node: _node, href, children, ...props }) =>
         href?.startsWith("#") ? (
-          <a href={href} {...props} onClick={(event) => scrollToAnchor(event, href)}>
+          <a
+            href={href}
+            {...props}
+            onClick={(event) => scrollToAnchor(event, href, rootRef.current)}
+          >
             {children}
           </a>
         ) : (
@@ -87,6 +100,7 @@ export const Markdown = memo(function Markdown({
 
   return (
     <div
+      ref={rootRef}
       className={
         "prose prose-sm prose-theme max-w-none break-words prose-headings:scroll-mt-4 prose-headings:font-semibold prose-headings:tracking-tight prose-a:font-medium prose-a:no-underline hover:prose-a:underline prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-normal prose-code:before:content-none prose-code:after:content-none prose-pre:border prose-img:inline prose-img:rounded-md"
       }

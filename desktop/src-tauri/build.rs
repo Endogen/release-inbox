@@ -9,6 +9,8 @@ fn main() {
             "show_notification",
             "set_unread_count",
             "set_status",
+            "desktop_settings",
+            "set_tray_enabled",
         ]),
     ))
     .expect("failed to run tauri-build");

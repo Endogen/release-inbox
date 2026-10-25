@@ -39,14 +39,6 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         starts_at_login(app),
         None::<&str>,
     )?;
-    let tray_only = CheckMenuItem::with_id(
-        app,
-        "tray-only",
-        "Show only in tray",
-        true,
-        window::uses_tray_only(app),
-        None::<&str>,
-    )?;
     let menu = Menu::with_items(
         app,
         &[
@@ -57,7 +49,6 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &autostart,
-            &tray_only,
             &MenuItem::with_id(app, "server", "Change server…", true, None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
@@ -91,7 +82,6 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let _ = window::navigate(app, window::current_server(app).as_ref());
             }
             "autostart" => toggle_autostart(app, &autostart),
-            "tray-only" => toggle_tray_only(app, &tray_only),
             #[cfg(any(target_os = "macos", windows))]
             "monochrome" => toggle_monochrome(app, &monochrome),
             "server" => {
@@ -114,7 +104,9 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     #[cfg(windows)]
     watch_taskbar_theme(app);
     app.manage(StatusItem(status));
-    refresh(app)
+    refresh(app)?;
+    let count = app.state::<AppState>().unread.lock().unwrap().unwrap_or(0);
+    update_icon(app, count)
 }
 
 fn starts_at_login(app: &AppHandle) -> bool {
@@ -151,29 +143,43 @@ fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
     let _ = item.set_checked(uses_monochrome(app));
 }
 
-fn toggle_tray_only(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
-    let result = (|| -> Result<(), String> {
-        let state = app.state::<AppState>();
-        let mut current = state.config.lock().unwrap();
-        let mut updated = current.clone();
-        updated.tray_only = !updated.tray_only;
-        // Apply first, and restore the previous setting if applying or saving fails.
-        let result = window::set_tray_only(app, updated.tray_only)
-            .map_err(|error| error.to_string())
-            .and_then(|()| config::save(app, &updated));
-        if let Err(error) = result {
-            if let Err(restore_error) = window::set_tray_only(app, current.tray_only) {
-                eprintln!("Couldn't restore taskbar visibility: {restore_error}");
-            }
-            return Err(error);
-        }
-        *current = updated;
-        Ok(())
-    })();
-    if let Err(error) = result {
-        eprintln!("Couldn't change taskbar visibility: {error}");
+/// Whether hiding to the tray is enabled on this installation.
+pub fn is_enabled(app: &AppHandle) -> bool {
+    app.state::<AppState>().config.lock().unwrap().tray_enabled
+}
+
+/// Apply immediately, preserving a way to reopen the app if a platform call or saving fails.
+pub fn set_enabled(app: &AppHandle, enabled: bool) -> Result<(), String> {
+    let mut updated = app.state::<AppState>().config.lock().unwrap().clone();
+    let previous = updated.tray_enabled;
+    if enabled == previous {
+        return Ok(());
     }
-    let _ = item.set_checked(window::uses_tray_only(app));
+    // Restore the window and taskbar/Dock before removing its alternative entry point.
+    if !enabled {
+        window::try_show(app).map_err(|error| error.to_string())?;
+    }
+    updated.tray_enabled = enabled;
+    let result = set_visible(app, enabled)
+        .map_err(|error| error.to_string())
+        .and_then(|()| config::save(app, &updated));
+    if let Err(error) = result {
+        if let Err(restore_error) = set_visible(app, previous) {
+            eprintln!("Couldn't restore the tray icon: {restore_error}");
+        }
+        return Err(error);
+    }
+    *app.state::<AppState>().config.lock().unwrap() = updated;
+    Ok(())
+}
+
+fn set_visible(app: &AppHandle, visible: bool) -> tauri::Result<()> {
+    if let Some(tray) = app.tray_by_id(TRAY) {
+        tray.set_visible(visible)?;
+    } else if visible {
+        create(app)?;
+    }
+    Ok(())
 }
 
 fn update_icon(app: &AppHandle, count: u32) -> tauri::Result<()> {

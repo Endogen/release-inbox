@@ -164,16 +164,17 @@ newer: older servers don't send it notifications.
 
 - On first start it asks for your server's address; you then sign in as usual. *Change server…*
   in the tray menu asks again. A server that redirects http to https is followed to https.
-- Closing the window keeps the app in the system tray. A single left click on the tray icon
+- With the tray enabled, closing the window keeps the app in the system tray. A single left click on the tray icon
   shows a hidden or minimized window, or hides an open one. On macOS the Dock icon also
   reopens it. Right-click the tray icon for *Open Releases*, *Sync now*, *Reload* (for example
   after the server was unreachable) and *Quit*. A dot on the tray icon and on the taskbar
   button (a count on the macOS Dock) shows that the inbox has entries.
-- *Show only in tray* hides the Dock icon on macOS or the taskbar button on Windows and
-  Linux, even while the window is open. Use the tray icon or *Open Releases* in its menu
-  to bring the window back. The choice applies immediately and is saved for the next launch;
-  uncheck it to restore the Dock/taskbar icon. Linux desktop environments may ignore this
-  taskbar hint, and need system tray support to keep the app accessible.
+- *Enable tray icon* in Settings → Desktop applies immediately and is saved on that device.
+  It defaults to on, including for existing installations. The Dock icon on macOS or taskbar
+  button on Windows and Linux appears while the window is open. Hiding or closing the window
+  to the tray removes it; reopening restores it. Normal minimization keeps the taskbar icon.
+  Turning the tray off restores the window and its Dock/taskbar icon; closing then quits the
+  app. Linux desktop environments may ignore taskbar hints and need system tray support.
 - On macOS and Windows, *Monochrome icon* in the tray menu switches to a rocket that follows
   the menu bar or taskbar's light or dark appearance, including its unread dot. Windows uses
   the system/taskbar colour mode, even when apps use a different mode, and updates while the
@@ -181,7 +182,8 @@ newer: older servers don't send it notifications.
   icon stays coloured.
 - *Start at login* in the tray menu adds the app to the system's login items (the registry's
   `Run` key on Windows, a Launch Agent on macOS, an autostart entry on Linux). Started that way,
-  it waits in the tray with the window hidden (`--hidden`) and still notifies you.
+  it waits in the tray with the window hidden (`--hidden`) and still notifies you. If the tray
+  is disabled, it opens visibly instead.
 - Notifications arrive over the app's live-update connection (`/api/events?notifications=true`)
   and follow the same rules as the other channels: mutes, pre-releases, *Breaking only*. They
   need no setup on the server, but only reach a desktop app that is running; there's no queue
