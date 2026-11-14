@@ -7,6 +7,7 @@
 
 mod commands;
 mod config;
+mod minimize;
 mod notifications;
 mod status;
 mod tray;
@@ -65,6 +66,7 @@ fn main() {
             commands::set_status,
             commands::desktop_settings,
             commands::set_tray_enabled,
+            commands::set_minimize_to_tray,
         ])
         .setup(|app| {
             let handle = app.handle();

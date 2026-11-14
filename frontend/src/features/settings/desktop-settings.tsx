@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import { FieldDescription, FieldLegend, FieldSet } from "@/components/ui/field"
 import { Skeleton } from "@/components/ui/skeleton"
-import { getDesktopSettings, setDesktopTrayEnabled } from "@/lib/desktop"
+import { getDesktopSettings, setDesktopMinimizeToTray, setDesktopTrayEnabled } from "@/lib/desktop"
 
 import { SwitchField } from "./setting-fields"
 
@@ -18,7 +18,8 @@ export function DesktopSettings() {
     retry: false,
   })
   const update = useMutation({
-    mutationFn: setDesktopTrayEnabled,
+    mutationFn: ({ setting, enabled }: { setting: "tray" | "minimize"; enabled: boolean }) =>
+      setting === "tray" ? setDesktopTrayEnabled(enabled) : setDesktopMinimizeToTray(enabled),
     onMutate: () => client.cancelQueries({ queryKey: desktopSettingsKey }),
     onSuccess: (saved) => client.setQueryData(desktopSettingsKey, saved),
   })
@@ -28,18 +29,38 @@ export function DesktopSettings() {
       <FieldLegend>Desktop</FieldLegend>
       <FieldDescription>Only on this device.</FieldDescription>
       {settings.data ? (
-        <SwitchField
-          label="Enable tray icon"
-          description={
-            settings.data.tray_enabled
-              ? "Closing the window keeps the app running in the tray. Its taskbar or Dock icon returns when you reopen it."
-              : "The app stays in the taskbar or Dock while running. Closing the window quits it."
-          }
-          checked={settings.data.tray_enabled}
-          disabled={update.isPending}
-          busy={update.isPending}
-          onCheckedChange={(enabled) => update.mutate(enabled)}
-        />
+        <>
+          <SwitchField
+            label="Enable tray icon"
+            description={
+              settings.data.tray_enabled
+                ? "Closing the window keeps the app running in the tray. Its taskbar or Dock icon returns when you reopen it."
+                : "The app stays in the taskbar or Dock while running. Closing the window quits it."
+            }
+            checked={settings.data.tray_enabled}
+            disabled={update.isPending}
+            busy={update.isPending && update.variables?.setting === "tray"}
+            onCheckedChange={(enabled) => update.mutate({ setting: "tray", enabled })}
+          />
+          <SwitchField
+            label="Minimize to tray"
+            description={
+              settings.data.minimize_to_tray === undefined
+                ? "Update the desktop app to use this option."
+                : settings.data.tray_enabled
+                  ? "Minimizing hides the window. Reopen it from the tray icon."
+                  : "Turn on the tray icon to use this option."
+            }
+            checked={settings.data.tray_enabled && (settings.data.minimize_to_tray ?? false)}
+            disabled={
+              update.isPending ||
+              !settings.data.tray_enabled ||
+              settings.data.minimize_to_tray === undefined
+            }
+            busy={update.isPending && update.variables?.setting === "minimize"}
+            onCheckedChange={(enabled) => update.mutate({ setting: "minimize", enabled })}
+          />
+        </>
       ) : settings.isError ? (
         <div className="flex flex-col items-start gap-2">
           <p role="alert" className="text-sm text-muted-foreground">

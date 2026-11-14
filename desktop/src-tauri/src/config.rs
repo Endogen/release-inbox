@@ -17,6 +17,8 @@ pub struct Config {
     pub monochrome_tray_icon: bool,
     /// Keep a tray icon and allow closing/hiding the window into it.
     pub tray_enabled: bool,
+    /// Also hide the main window in the tray when the user minimizes it.
+    pub minimize_to_tray: bool,
     /// Start an ordinary launch in the tray once a server has been configured.
     pub start_in_tray: bool,
 }
@@ -29,6 +31,7 @@ impl Default for Config {
             monochrome_tray_icon: false,
             // Every older installation had a tray, regardless of its old tray_only setting.
             tray_enabled: true,
+            minimize_to_tray: false,
             start_in_tray: false,
         }
     }
@@ -186,6 +189,7 @@ mod tests {
         assert!(!config.tray_hint_shown);
         assert!(!config.monochrome_tray_icon);
         assert!(config.tray_enabled);
+        assert!(!config.minimize_to_tray);
     }
 
     #[test]

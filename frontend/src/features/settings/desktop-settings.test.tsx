@@ -20,6 +20,36 @@ function settings() {
 beforeEach(() => invoke.mockReset())
 afterEach(cleanup)
 
+it("saves Minimize to tray using the desktop settings switch", async () => {
+  invoke
+    .mockResolvedValueOnce({ tray_enabled: true, minimize_to_tray: false })
+    .mockResolvedValueOnce({ tray_enabled: true, minimize_to_tray: true })
+    .mockResolvedValueOnce({ tray_enabled: true, minimize_to_tray: false })
+  settings()
+  const toggle = await screen.findByRole("switch", { name: "Minimize to tray" })
+  for (const enabled of [true, false]) {
+    fireEvent.click(toggle)
+    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe(String(enabled)))
+    expect(invoke).toHaveBeenLastCalledWith("set_minimize_to_tray", { enabled })
+  }
+})
+
+it("makes Minimize to tray unavailable while the tray is disabled", async () => {
+  invoke.mockResolvedValueOnce({ tray_enabled: false, minimize_to_tray: true })
+  settings()
+  const toggle = await screen.findByRole("switch", { name: "Minimize to tray" })
+  expect(toggle.hasAttribute("disabled")).toBe(true)
+  expect(toggle.getAttribute("aria-checked")).toBe("false")
+})
+
+it("explains how to enable Minimize to tray on an older desktop build", async () => {
+  invoke.mockResolvedValueOnce({ tray_enabled: true })
+  settings()
+  const toggle = await screen.findByRole("switch", { name: "Minimize to tray" })
+  expect(toggle.hasAttribute("disabled")).toBe(true)
+  expect(screen.getByText(/Update the desktop app to use this option/)).toBeTruthy()
+})
+
 it("reads the native preference and can turn a disabled tray back on", async () => {
   invoke
     .mockResolvedValueOnce({ tray_enabled: false })

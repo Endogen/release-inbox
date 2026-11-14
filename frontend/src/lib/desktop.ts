@@ -57,6 +57,8 @@ export function setDesktopStatus(status: DesktopStatus): Promise<void> {
 /** Native preferences belong to this installation, not the server account. */
 export interface DesktopSettings {
   tray_enabled: boolean
+  /** Older desktop builds only report tray_enabled. */
+  minimize_to_tray?: boolean
 }
 
 export function getDesktopSettings(): Promise<DesktopSettings> {
@@ -66,6 +68,10 @@ export function getDesktopSettings(): Promise<DesktopSettings> {
 /** Unlike background status updates, failures must reach the settings UI. */
 export function setDesktopTrayEnabled(enabled: boolean): Promise<DesktopSettings> {
   return invoke("set_tray_enabled", { enabled })
+}
+
+export function setDesktopMinimizeToTray(enabled: boolean): Promise<DesktopSettings> {
+  return invoke("set_minimize_to_tray", { enabled })
 }
 
 /** A button clicked on a notification about releases. */

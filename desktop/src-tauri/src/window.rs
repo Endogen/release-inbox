@@ -76,6 +76,19 @@ pub fn create(app: &AppHandle, server: Option<&Url>, visible: bool) -> tauri::Re
         })
         .build()?;
 
+    let minimize_app = app.clone();
+    crate::minimize::observe(&window, move || {
+        let enabled = minimize_app
+            .state::<AppState>()
+            .config
+            .lock()
+            .unwrap()
+            .minimize_to_tray;
+        if enabled && let Err(error) = hide(&minimize_app) {
+            eprintln!("Couldn't minimize to the tray: {error}");
+        }
+    })?;
+
     let close_app = app.clone();
     window.on_window_event(move |event| {
         if let WindowEvent::CloseRequested { api, .. } = event {
@@ -173,7 +186,8 @@ fn allow_server(app: &AppHandle, server: &Url) -> tauri::Result<()> {
             .permission("allow-set-unread-count")
             .permission("allow-set-status")
             .permission("allow-desktop-settings")
-            .permission("allow-set-tray-enabled"),
+            .permission("allow-set-tray-enabled")
+            .permission("allow-set-minimize-to-tray"),
     )
 }
 

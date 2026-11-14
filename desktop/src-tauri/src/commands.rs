@@ -2,7 +2,7 @@
 //! notifications, the number of inbox entries and whether notifications can arrive.
 
 use serde::Serialize;
-use tauri::{AppHandle, Webview};
+use tauri::{AppHandle, Manager, Webview};
 
 use crate::notifications::{self, ServerNotification};
 use crate::status::{self, Status};
@@ -54,14 +54,22 @@ pub fn set_status(app: AppHandle, webview: Webview, status: Status) -> Result<()
 #[derive(Serialize)]
 pub struct DesktopSettings {
     tray_enabled: bool,
+    minimize_to_tray: bool,
+}
+
+fn current_settings(app: &AppHandle) -> DesktopSettings {
+    let state = app.state::<crate::AppState>();
+    let config = state.config.lock().unwrap();
+    DesktopSettings {
+        tray_enabled: config.tray_enabled,
+        minimize_to_tray: config.minimize_to_tray,
+    }
 }
 
 #[tauri::command]
 pub fn desktop_settings(app: AppHandle, webview: Webview) -> Result<DesktopSettings, String> {
     window::require_server_page(&app, &webview)?;
-    Ok(DesktopSettings {
-        tray_enabled: tray::is_enabled(&app),
-    })
+    Ok(current_settings(&app))
 }
 
 #[tauri::command]
@@ -72,7 +80,16 @@ pub fn set_tray_enabled(
 ) -> Result<DesktopSettings, String> {
     window::require_server_page(&app, &webview)?;
     tray::set_enabled(&app, enabled)?;
-    Ok(DesktopSettings {
-        tray_enabled: tray::is_enabled(&app),
-    })
+    Ok(current_settings(&app))
+}
+
+#[tauri::command]
+pub fn set_minimize_to_tray(
+    app: AppHandle,
+    webview: Webview,
+    enabled: bool,
+) -> Result<DesktopSettings, String> {
+    window::require_server_page(&app, &webview)?;
+    config::update(&app, |config| config.minimize_to_tray = enabled)?;
+    Ok(current_settings(&app))
 }

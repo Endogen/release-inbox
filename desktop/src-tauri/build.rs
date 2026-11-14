@@ -11,6 +11,7 @@ fn main() {
             "set_status",
             "desktop_settings",
             "set_tray_enabled",
+            "set_minimize_to_tray",
         ]),
     ))
     .expect("failed to run tauri-build");

@@ -172,7 +172,9 @@ newer: older servers don't send it notifications.
 - *Enable tray icon* in Settings → Desktop applies immediately and is saved on that device.
   It defaults to on, including for existing installations. The Dock icon on macOS or taskbar
   button on Windows and Linux appears while the window is open. Hiding or closing the window
-  to the tray removes it; reopening restores it. Normal minimization keeps the taskbar icon.
+  to the tray removes it; reopening restores it. Turn on *Minimize to tray* in the same
+  settings panel to also hide the window when you use the title-bar minimize button.
+  This defaults to off. On Windows, the tray icon may be under the arrow beside the clock.
   Turning the tray off restores the window and its Dock/taskbar icon; closing then quits the
   app. Linux desktop environments may ignore taskbar hints and need system tray support.
 - On macOS and Windows, *Monochrome icon* in the tray menu switches to a rocket that follows
