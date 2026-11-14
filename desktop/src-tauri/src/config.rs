@@ -17,6 +17,8 @@ pub struct Config {
     pub monochrome_tray_icon: bool,
     /// Keep a tray icon and allow closing/hiding the window into it.
     pub tray_enabled: bool,
+    /// Start an ordinary launch in the tray once a server has been configured.
+    pub start_in_tray: bool,
 }
 
 impl Default for Config {
@@ -27,11 +29,16 @@ impl Default for Config {
             monochrome_tray_icon: false,
             // Every older installation had a tray, regardless of its old tray_only setting.
             tray_enabled: true,
+            start_in_tray: false,
         }
     }
 }
 
 impl Config {
+    pub fn starts_in_tray(&self, hidden_requested: bool) -> bool {
+        self.tray_enabled && (self.start_in_tray || hidden_requested) && self.server_url().is_some()
+    }
+
     pub fn server_url(&self) -> Option<Url> {
         self.server_url
             .as_deref()
@@ -63,6 +70,17 @@ pub fn save(app: &AppHandle, config: &Config) -> Result<(), String> {
     }
     let json = serde_json::to_vec_pretty(config).map_err(|error| error.to_string())?;
     fs::write(path, json).map_err(|error| format!("Couldn't save the settings: {error}"))
+}
+
+/// Publish a settings change only after the complete configuration is saved.
+pub fn update(app: &AppHandle, edit: impl FnOnce(&mut Config)) -> Result<(), String> {
+    let state = app.state::<crate::AppState>();
+    let mut current = state.config.lock().unwrap();
+    let mut updated = current.clone();
+    edit(&mut updated);
+    save(app, &updated)?;
+    *current = updated;
+    Ok(())
 }
 
 /// The origin of the server the user typed in, with a trailing slash: `releases.example.com`
@@ -129,6 +147,35 @@ mod tests {
         assert!(normalized("*.example.com").is_err());
         assert!(normalized("a(b.example").is_err());
         assert!(normalized("http://[::1]:5173").is_err());
+    }
+
+    #[test]
+    fn remembers_start_in_tray_across_launches() {
+        let existing = r#"{"server_url":"https://a.example/"}"#;
+        let mut config: Config = serde_json::from_str(existing).unwrap();
+        assert!(!config.starts_in_tray(false));
+        assert!(config.starts_in_tray(true));
+
+        config.start_in_tray = true;
+        let saved = serde_json::to_vec(&config).unwrap();
+        let restored: Config = serde_json::from_slice(&saved).unwrap();
+        assert!(restored.starts_in_tray(false));
+    }
+
+    #[test]
+    fn hidden_launch_requires_a_tray_and_a_valid_server() {
+        for hidden_requested in [false, true] {
+            let mut config = Config {
+                start_in_tray: true,
+                ..Config::default()
+            };
+            assert!(!config.starts_in_tray(hidden_requested));
+            config.server_url = Some("file:///".into());
+            assert!(!config.starts_in_tray(hidden_requested));
+            config.set_server_url(&Url::parse("https://a.example/").unwrap());
+            config.tray_enabled = false;
+            assert!(!config.starts_in_tray(hidden_requested));
+        }
     }
 
     #[test]

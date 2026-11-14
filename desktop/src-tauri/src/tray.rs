@@ -39,20 +39,13 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         starts_at_login(app),
         None::<&str>,
     )?;
-    let menu = Menu::with_items(
+    let start_in_tray = CheckMenuItem::with_id(
         app,
-        &[
-            &status,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "open", "Open Releases", true, None::<&str>)?,
-            &MenuItem::with_id(app, "sync", "Sync now", true, None::<&str>)?,
-            &MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &autostart,
-            &MenuItem::with_id(app, "server", "Change server…", true, None::<&str>)?,
-            &PredefinedMenuItem::separator(app)?,
-            &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
-        ],
+        "start_in_tray",
+        "Start in tray",
+        true,
+        app.state::<AppState>().config.lock().unwrap().start_in_tray,
+        None::<&str>,
     )?;
     #[cfg(any(target_os = "macos", windows))]
     let monochrome = CheckMenuItem::with_id(
@@ -63,9 +56,24 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         uses_monochrome(app),
         None::<&str>,
     )?;
-    // Right after "Start at login", below the status line and its separator.
-    #[cfg(any(target_os = "macos", windows))]
-    menu.insert(&monochrome, 7)?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &status,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "open", "Open Releases", true, None::<&str>)?,
+            &MenuItem::with_id(app, "sync", "Sync now", true, None::<&str>)?,
+            &MenuItem::with_id(app, "reload", "Reload", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &autostart,
+            &start_in_tray,
+            #[cfg(any(target_os = "macos", windows))]
+            &monochrome,
+            &MenuItem::with_id(app, "server", "Change server…", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "quit", "Quit Releases", true, None::<&str>)?,
+        ],
+    )?;
     TrayIconBuilder::with_id(TRAY)
         .icon(current_icon(0, uses_monochrome(app)).clone())
         .icon_as_template(uses_monochrome(app))
@@ -82,6 +90,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let _ = window::navigate(app, window::current_server(app).as_ref());
             }
             "autostart" => toggle_autostart(app, &autostart),
+            "start_in_tray" => {
+                if let Err(error) = save_checked(app, &start_in_tray, |c| &mut c.start_in_tray) {
+                    eprintln!("Couldn't save Start in tray: {error}");
+                }
+            }
             #[cfg(any(target_os = "macos", windows))]
             "monochrome" => toggle_monochrome(app, &monochrome),
             "server" => {
@@ -123,24 +136,28 @@ fn uses_monochrome(app: &AppHandle) -> bool {
             .monochrome_tray_icon
 }
 
+/// Native check items toggle before the callback. Undo the check if saving fails.
+fn save_checked(
+    app: &AppHandle,
+    item: &CheckMenuItem<tauri::Wry>,
+    field: impl Fn(&mut config::Config) -> &mut bool,
+) -> Result<(), String> {
+    let checked = item.is_checked().map_err(|error| error.to_string())?;
+    config::update(app, |config| *field(config) = checked).inspect_err(|_| {
+        let saved = *field(&mut app.state::<AppState>().config.lock().unwrap());
+        let _ = item.set_checked(saved);
+    })
+}
+
 #[cfg(any(target_os = "macos", windows))]
 fn toggle_monochrome(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {
-    let result = (|| -> Result<(), String> {
-        let state = app.state::<AppState>();
-        let mut current = state.config.lock().unwrap();
-        let mut updated = current.clone();
-        updated.monochrome_tray_icon = !updated.monochrome_tray_icon;
-        config::save(app, &updated)?;
-        *current = updated;
-        drop(current);
-        let count = state.unread.lock().unwrap().unwrap_or(0);
+    let result = save_checked(app, item, |c| &mut c.monochrome_tray_icon).and_then(|()| {
+        let count = app.state::<AppState>().unread.lock().unwrap().unwrap_or(0);
         update_icon(app, count).map_err(|error| error.to_string())
-    })();
+    });
     if let Err(error) = result {
         eprintln!("Couldn't change the tray icon: {error}");
     }
-    // Native check items toggle before the callback; restore the saved value on failure.
-    let _ = item.set_checked(uses_monochrome(app));
 }
 
 /// Whether hiding to the tray is enabled on this installation.
@@ -150,8 +167,7 @@ pub fn is_enabled(app: &AppHandle) -> bool {
 
 /// Apply immediately, preserving a way to reopen the app if a platform call or saving fails.
 pub fn set_enabled(app: &AppHandle, enabled: bool) -> Result<(), String> {
-    let mut updated = app.state::<AppState>().config.lock().unwrap().clone();
-    let previous = updated.tray_enabled;
+    let previous = is_enabled(app);
     if enabled == previous {
         return Ok(());
     }
@@ -159,17 +175,15 @@ pub fn set_enabled(app: &AppHandle, enabled: bool) -> Result<(), String> {
     if !enabled {
         window::try_show(app).map_err(|error| error.to_string())?;
     }
-    updated.tray_enabled = enabled;
     let result = set_visible(app, enabled)
         .map_err(|error| error.to_string())
-        .and_then(|()| config::save(app, &updated));
+        .and_then(|()| config::update(app, |config| config.tray_enabled = enabled));
     if let Err(error) = result {
         if let Err(restore_error) = set_visible(app, previous) {
             eprintln!("Couldn't restore the tray icon: {restore_error}");
         }
         return Err(error);
     }
-    *app.state::<AppState>().config.lock().unwrap() = updated;
     Ok(())
 }
 

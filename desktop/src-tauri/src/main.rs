@@ -70,17 +70,12 @@ fn main() {
             let handle = app.handle();
             let loaded = config::load(handle);
             let server = loaded.server_url();
+            let hidden = loaded.starts_in_tray(std::env::args().any(|arg| arg == START_HIDDEN));
             *app.state::<AppState>().config.lock().unwrap() = loaded;
             notifications::register(handle)?;
             if tray::is_enabled(handle) {
                 tray::create(handle)?;
             }
-            // Started at login, the app waits in the tray; without a server it asks for one.
-            let hidden = start_hidden(
-                tray::is_enabled(handle),
-                server.is_some(),
-                std::env::args().any(|arg| arg == START_HIDDEN),
-            );
             window::create(handle, server.as_ref(), !hidden)?;
             Ok(())
         })
@@ -97,21 +92,4 @@ fn main() {
                 window::show(_app);
             }
         });
-}
-
-fn start_hidden(tray_enabled: bool, has_server: bool, hidden_requested: bool) -> bool {
-    tray_enabled && has_server && hidden_requested
-}
-
-#[cfg(test)]
-mod tests {
-    use super::start_hidden;
-
-    #[test]
-    fn hidden_login_requires_a_tray_and_a_configured_server() {
-        assert!(start_hidden(true, true, true));
-        assert!(!start_hidden(false, true, true));
-        assert!(!start_hidden(true, false, true));
-        assert!(!start_hidden(true, true, false));
-    }
 }

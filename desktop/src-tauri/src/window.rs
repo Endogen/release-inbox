@@ -144,13 +144,7 @@ fn open_in_browser(app: &AppHandle, url: &Url) {
 
 /// Saves `server` as the one to show and lets its pages use the desktop.
 pub fn use_server(app: &AppHandle, server: &Url) -> Result<(), String> {
-    let config = {
-        let state = app.state::<AppState>();
-        let mut config = state.config.lock().unwrap();
-        config.set_server_url(server);
-        config.clone()
-    };
-    config::save(app, &config)?;
+    config::update(app, |config| config.set_server_url(server))?;
     allow_server(app, server).map_err(|error| error.to_string())
 }
 
@@ -276,22 +270,24 @@ fn close_to_tray(app: &AppHandle) {
         eprintln!("Couldn't close to the tray: {error}");
         return;
     }
-    let first_time = {
+    let saved = {
         let state = app.state::<AppState>();
         let mut config = state.config.lock().unwrap();
-        let first_time = !config.tray_hint_shown;
+        if config.tray_hint_shown {
+            return;
+        }
         config.tray_hint_shown = true;
-        first_time.then(|| config.clone())
+        config::save(app, &config)
     };
-    if let Some(config) = first_time {
-        let _ = config::save(app, &config);
-        let _ = app
-            .notification()
-            .builder()
-            .title("Releases is still running")
-            .body("It keeps notifying you from the system tray. Quit it from the tray icon's menu.")
-            .show();
+    if let Err(error) = saved {
+        eprintln!("Couldn't save the tray hint: {error}");
     }
+    let _ = app
+        .notification()
+        .builder()
+        .title("Releases is still running")
+        .body("It keeps notifying you from the system tray. Quit it from the tray icon's menu.")
+        .show();
 }
 
 #[cfg(test)]

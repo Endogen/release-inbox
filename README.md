@@ -180,6 +180,9 @@ newer: older servers don't send it notifications.
   the system/taskbar colour mode, even when apps use a different mode, and updates while the
   app is running or hidden. The choice is saved for the next launch; the Dock/taskbar app
   icon stays coloured.
+- *Start in tray* in the tray menu also hides the window on ordinary launches. It defaults
+  to off. Opening Releases again brings the running window forward. First-time setup and
+  launches with the tray disabled always show the window.
 - *Start at login* in the tray menu adds the app to the system's login items (the registry's
   `Run` key on Windows, a Launch Agent on macOS, an autostart entry on Linux). Started that way,
   it waits in the tray with the window hidden (`--hidden`) and still notifies you. If the tray
