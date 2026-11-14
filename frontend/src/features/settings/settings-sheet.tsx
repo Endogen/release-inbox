@@ -1,3 +1,5 @@
+import { useQuery } from "@tanstack/react-query"
+import { getVersion } from "@tauri-apps/api/app"
 import { ArrowLeftIcon, XIcon } from "lucide-react"
 import { useRef } from "react"
 
@@ -8,11 +10,13 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
 import { isDesktop } from "@/lib/desktop"
 
+import { version } from "../../../package.json"
 import { DesktopSettings } from "./desktop-settings"
 import { DisplayOptions } from "./display-options"
 import { InboxSettings } from "./inbox-settings"
@@ -23,9 +27,21 @@ interface SettingsSheetProps {
   onOpenChange: (open: boolean) => void
 }
 
+function DesktopVersion() {
+  const version = useQuery({
+    queryKey: ["desktop-version"],
+    queryFn: getVersion,
+    staleTime: Infinity,
+    retry: false,
+  })
+  if (version.isPending) return null
+  return <span>{version.isError ? "Desktop version unavailable" : `Desktop v${version.data}`}</span>
+}
+
 /** A panel on larger screens; a page with a back button on phones. */
 export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
   const contentRef = useRef<HTMLDivElement>(null)
+  const desktop = isDesktop()
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -62,13 +78,17 @@ export function SettingsSheet({ open, onOpenChange }: SettingsSheetProps) {
           <InboxSettings />
           <Separator />
           <DisplayOptions />
-          {isDesktop() && (
+          {desktop && (
             <>
               <Separator />
               <DesktopSettings />
             </>
           )}
         </div>
+        <SheetFooter className="shrink-0 flex-row flex-wrap justify-between border-t py-3 text-xs text-muted-foreground">
+          <span>Web app v{version}</span>
+          {desktop && <DesktopVersion />}
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   )

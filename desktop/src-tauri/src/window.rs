@@ -166,6 +166,7 @@ fn allow_server(app: &AppHandle, server: &Url) -> tauri::Result<()> {
             .remote(format!("{origin}/*"))
             .local(false)
             .window(MAIN)
+            .permission("core:app:allow-version")
             .permission("core:event:allow-listen")
             .permission("core:event:allow-unlisten")
             .permission("allow-show-notification")
