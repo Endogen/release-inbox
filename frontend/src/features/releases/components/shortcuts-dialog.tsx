@@ -5,8 +5,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { KeyHint } from "@/components/key-hint"
-import { KbdGroup } from "@/components/ui/kbd"
+import { Kbd, KbdGroup } from "@/components/ui/kbd"
+import { keyLabel } from "@/lib/hotkeys"
 
 import { SHORTCUTS } from "../shortcuts"
 
@@ -18,12 +18,12 @@ interface ShortcutsDialogProps {
 export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Keyboard shortcuts</DialogTitle>
           <DialogDescription>Work through your releases without the mouse.</DialogDescription>
         </DialogHeader>
-        <dl className="flex flex-col">
+        <dl tabIndex={0} className="flex flex-col overflow-y-auto">
           {SHORTCUTS.map(({ keys, description }) => (
             <div
               key={description}
@@ -33,7 +33,7 @@ export function ShortcutsDialog({ open, onOpenChange }: ShortcutsDialogProps) {
               <dd>
                 <KbdGroup>
                   {keys.map((key) => (
-                    <KeyHint key={key} hotkey={key} />
+                    <Kbd key={key}>{keyLabel(key)}</Kbd>
                   ))}
                 </KbdGroup>
               </dd>
