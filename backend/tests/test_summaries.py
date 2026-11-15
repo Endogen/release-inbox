@@ -15,7 +15,7 @@ from ghr.container import Container
 from ghr.errors import InvalidRequestError, SummaryError
 from ghr.services.claude import ClaudeSummarizer
 from ghr.services.summaries import ReleaseNotes
-from tests.conftest import running_container
+from tests.conftest import running_container, timestamp
 from tests.github_fixtures import FakeRelease, mock_github
 
 RELEASE = FakeRelease(1, 10, "acme/app", "v1.0.0", "2026-10-01T10:00:00Z", body="Added a thing")
@@ -55,23 +55,24 @@ async def test_summaries_are_cached_until_the_notes_change(
     user_client: AsyncClient,
     summarizer: FakeSummarizer,
 ) -> None:
-    mock_github(github_api, [RELEASE])
+    release = replace(RELEASE, published_at=timestamp(days_ago=1))
+    mock_github(github_api, [release])
     await container.sync.sync()
 
-    first = await user_client.post("/api/summaries", json={"release_ids": [RELEASE.id]})
-    second = await user_client.post("/api/summaries", json={"release_ids": [RELEASE.id]})
+    first = await user_client.post("/api/summaries", json={"release_ids": [release.id]})
+    second = await user_client.post("/api/summaries", json={"release_ids": [release.id]})
 
     assert first.json() == {"content": "- 1 release(s)", "model": "fake-model"}
     assert second.json() == first.json()
     assert len(summarizer.calls) == 1
-    cached = await user_client.get("/api/summaries", params={"release_ids": [RELEASE.id]})
+    cached = await user_client.get("/api/summaries", params={"release_ids": [release.id]})
     assert cached.json() == first.json()
 
-    edited = replace(RELEASE, body="Added a thing and fixed another")
-    github_api.get(RELEASE.refresh_url).mock(return_value=Response(200, json=edited.release()))
+    edited = replace(release, body="Added a thing and fixed another")
+    github_api.get(release.refresh_url).mock(return_value=Response(200, json=edited.release()))
     await container.sync.refresh_recent(published_within=timedelta(days=30))
-    stale = await user_client.get("/api/summaries", params={"release_ids": [RELEASE.id]})
-    await user_client.post("/api/summaries", json={"release_ids": [RELEASE.id]})
+    stale = await user_client.get("/api/summaries", params={"release_ids": [release.id]})
+    await user_client.post("/api/summaries", json={"release_ids": [release.id]})
 
     assert stale.status_code == 404
     assert len(summarizer.calls) == 2
