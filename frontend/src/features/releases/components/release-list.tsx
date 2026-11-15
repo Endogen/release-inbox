@@ -77,10 +77,7 @@ export function ReleaseList({
   if (!showList) return <ReleaseListEmpty view={view} search={search} />
 
   return (
-    <ScrollArea
-      viewportRef={viewportRef}
-      className="min-h-0 flex-1 [&_[data-slot=scroll-area-thumb]]:rounded-none"
-    >
+    <ScrollArea viewportRef={viewportRef} className="min-h-0 flex-1">
       <ul ref={listRef} className="flex flex-col">
         {items.map((release) => {
           const selected = release.repository.id === selectedRepositoryId
