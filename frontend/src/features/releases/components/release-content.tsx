@@ -5,6 +5,7 @@ import {
   ScrollTextIcon,
   SparklesIcon,
 } from "lucide-react"
+import { Suspense, type ReactNode } from "react"
 
 import { EmptyState } from "@/components/empty-state"
 import { ErrorState } from "@/components/error-state"
@@ -79,80 +80,100 @@ export function ReleaseContent({
         </TabsList>
       </div>
       {/* Inactive tabs are unmounted, so each loads its content when it is opened. */}
-      <ScrollArea className="min-h-0 flex-1">
-        <TabsContent value="notes" className="px-6 py-6">
-          <ReleaseNotes release={release} body={body} />
+      <TabsContent value="notes" className="min-h-0">
+        <ReleaseNotes release={release} body={body} />
+      </TabsContent>
+      {showChanges && (
+        <TabsContent value="changes" className="min-h-0">
+          <WhatsNew release={release} search={search} />
         </TabsContent>
-        {showChanges && (
-          <TabsContent value="changes" className="px-6 py-6">
-            <WhatsNew release={release} search={search} />
-          </TabsContent>
-        )}
-        <TabsContent value="readme" className="px-6 py-6">
-          <RepositoryReadme release={release} />
-        </TabsContent>
-      </ScrollArea>
+      )}
+      <TabsContent value="readme" className="min-h-0">
+        <RepositoryReadme release={release} />
+      </TabsContent>
     </Tabs>
+  )
+}
+
+function LoadingContent() {
+  return (
+    <div className="h-full overflow-clip p-6">
+      <MarkdownSkeleton />
+    </div>
+  )
+}
+
+/** Only loaded content participates in scrolling, including after the Markdown chunk arrives. */
+function ContentViewport({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<LoadingContent />}>
+      <ScrollArea className="h-full">
+        <div className="p-6">{children}</div>
+      </ScrollArea>
+    </Suspense>
   )
 }
 
 function ReleaseNotes({ release, body }: { release: Release; body: string | null | undefined }) {
   const baseUrls = repositoryBaseUrls(release.repository)
-  if (body === undefined) return <MarkdownSkeleton />
-  if (!body?.trim()) {
-    return (
-      <EmptyState
-        icon={FileTextIcon}
-        title="No release notes"
-        description="This release was published without a description."
-      />
-    )
-  }
+  if (body === undefined) return <LoadingContent />
   return (
-    <>
-      <SummaryPanel
-        key={release.id}
-        releaseIds={[release.id]}
-        baseUrls={baseUrls}
-        subject="this release"
-      />
-      <LazyMarkdown content={body} baseUrls={baseUrls} />
-    </>
+    <ContentViewport>
+      {!body?.trim() ? (
+        <EmptyState
+          icon={FileTextIcon}
+          title="No release notes"
+          description="This release was published without a description."
+        />
+      ) : (
+        <>
+          <SummaryPanel
+            key={release.id}
+            releaseIds={[release.id]}
+            baseUrls={baseUrls}
+            subject="this release"
+          />
+          <LazyMarkdown content={body} baseUrls={baseUrls} />
+        </>
+      )}
+    </ContentViewport>
   )
 }
 
 /** The notes of every unread release of the entry, newest first. */
 function WhatsNew({ release, search }: { release: Release; search: string }) {
   const unread = useUnreadReleases(release.repository.id, search)
-  if (unread.isPending) return <MarkdownSkeleton />
+  if (unread.isPending) return <LoadingContent />
   if (unread.isError) return <LoadError onRetry={() => void unread.refetch()} />
 
   const baseUrls = repositoryBaseUrls(release.repository)
   const summarized = unread.data.slice(0, MAX_SUMMARIZED_RELEASES).map((item) => item.id)
   return (
-    <div className="flex flex-col gap-8">
-      <SummaryPanel
-        key={summarized.join(",")}
-        releaseIds={summarized}
-        baseUrls={baseUrls}
-        subject={
-          unread.data.length > summarized.length
-            ? `the newest ${summarized.length} releases`
-            : `these ${summarized.length} releases`
-        }
-      />
-      {unread.data.map((item, index) => (
-        <section key={item.id} aria-labelledby={`changes-${item.id}`}>
-          {index > 0 && <Separator className="mb-8" />}
-          <WhatsNewHeading release={item} />
-          {item.body?.trim() ? (
-            <LazyMarkdown content={item.body} baseUrls={baseUrls} />
-          ) : (
-            <p className="text-sm text-muted-foreground">No release notes.</p>
-          )}
-        </section>
-      ))}
-    </div>
+    <ContentViewport>
+      <div className="flex flex-col gap-8">
+        <SummaryPanel
+          key={summarized.join(",")}
+          releaseIds={summarized}
+          baseUrls={baseUrls}
+          subject={
+            unread.data.length > summarized.length
+              ? `the newest ${summarized.length} releases`
+              : `these ${summarized.length} releases`
+          }
+        />
+        {unread.data.map((item, index) => (
+          <section key={item.id} aria-labelledby={`changes-${item.id}`}>
+            {index > 0 && <Separator className="mb-8" />}
+            <WhatsNewHeading release={item} />
+            {item.body?.trim() ? (
+              <LazyMarkdown content={item.body} baseUrls={baseUrls} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No release notes.</p>
+            )}
+          </section>
+        ))}
+      </div>
+    </ContentViewport>
   )
 }
 
@@ -176,33 +197,41 @@ function RepositoryReadme({ release }: { release: Release }) {
   const { repository } = release
   const readme = useReadme(repository.id)
 
-  if (readme.isPending) return <MarkdownSkeleton />
+  if (readme.isPending) return <LoadingContent />
   if (readme.isError) {
     if (!isNotFound(readme.error)) return <LoadError onRetry={() => void readme.refetch()} />
     return (
-      <EmptyState
-        icon={BookOpenIcon}
-        title="No README"
-        description="This repository doesn't have a README."
-      >
-        <Button variant="outline" size="sm" asChild>
-          <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
-            Open repository
-            <ExternalLinkIcon data-icon="inline-end" />
-          </a>
-        </Button>
-      </EmptyState>
+      <ContentViewport>
+        <EmptyState
+          icon={BookOpenIcon}
+          title="No README"
+          description="This repository doesn't have a README."
+        >
+          <Button variant="outline" size="sm" asChild>
+            <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
+              Open repository
+              <ExternalLinkIcon data-icon="inline-end" />
+            </a>
+          </Button>
+        </EmptyState>
+      </ContentViewport>
     )
   }
-  return <LazyMarkdown content={readme.data.content} baseUrls={fileBaseUrls(readme.data)} />
+  return (
+    <ContentViewport>
+      <LazyMarkdown content={readme.data.content} baseUrls={fileBaseUrls(readme.data)} />
+    </ContentViewport>
+  )
 }
 
 function LoadError({ onRetry }: { onRetry: () => void }) {
   return (
-    <ErrorState
-      title="Couldn't load this"
-      description="GitHub or the server didn't respond. Try again in a moment."
-      onAction={onRetry}
-    />
+    <ContentViewport>
+      <ErrorState
+        title="Couldn't load this"
+        description="GitHub or the server didn't respond. Try again in a moment."
+        onAction={onRetry}
+      />
+    </ContentViewport>
   )
 }

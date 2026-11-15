@@ -1,19 +1,11 @@
-import { lazy, Suspense } from "react"
+import { lazy } from "react"
 
 import { Skeleton } from "@/components/ui/skeleton"
 
-import type { MarkdownProps } from "./markdown"
-
 // The markdown pipeline is the largest dependency; it loads with the first markdown shown.
-const Markdown = lazy(() => import("./markdown").then((module) => ({ default: module.Markdown })))
-
-export function LazyMarkdown(props: MarkdownProps) {
-  return (
-    <Suspense fallback={<MarkdownSkeleton />}>
-      <Markdown {...props} />
-    </Suspense>
-  )
-}
+export const LazyMarkdown = lazy(() =>
+  import("./markdown").then((module) => ({ default: module.Markdown }))
+)
 
 export function MarkdownSkeleton() {
   return (

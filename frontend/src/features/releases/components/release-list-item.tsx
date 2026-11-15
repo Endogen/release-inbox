@@ -115,7 +115,7 @@ export const ReleaseListItem = memo(function ReleaseListItem({
             {compactList && <EntryState release={release} />}
           </div>
           {!compactList && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <div className="flex min-h-5 items-center gap-2 text-xs text-muted-foreground">
               {showTag && <span className="truncate font-mono">{release.tag_name}</span>}
               <EntryState release={release} />
             </div>

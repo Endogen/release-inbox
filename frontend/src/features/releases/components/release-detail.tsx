@@ -72,7 +72,7 @@ export function ReleaseDetail({
   const now = useNow()
 
   return (
-    <article className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in slide-in-from-bottom-1">
+    <article className="flex h-full min-h-0 flex-col animate-in duration-300 fade-in">
       <header className="flex flex-col gap-5 border-b px-6 pt-5 pb-5">
         <div className="flex items-center gap-3">
           {onBack && (
