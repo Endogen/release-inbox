@@ -267,7 +267,7 @@ export function Features() {
           className="md:col-span-6 md:grid md:grid-cols-[1fr_auto] md:items-center"
         >
           <div className="flex h-72 justify-center overflow-hidden px-6 md:h-80 md:pr-16 md:pl-0">
-            <div className="mt-2 h-fit w-52 overflow-hidden rounded-t-[2rem] border-x-[6px] border-t-[6px] border-foreground/85 shadow-2xl md:mt-10 md:w-60">
+            <div className="mt-2 h-fit w-52 overflow-hidden rounded-t-xl border-x-[6px] border-t-[6px] border-foreground/85 shadow-2xl md:mt-10 md:w-60">
               <Image src={mobileSwipe} alt="Swiping an entry to mark it as read" sizes="240px" />
             </div>
           </div>
