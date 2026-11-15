@@ -233,7 +233,7 @@ export function InboxPage({ username }: { username: string }) {
           onUnsubscribe: () => actions.unsubscribe(selected),
           onSnooze: (until) => actions.snooze(selected, until),
           onUnsnooze: () => actions.unsnooze(selected),
-          onCopyLink: () => actions.copyLink(selected),
+          onCopyLink: actions.copyLink,
         }}
       />
     ) : route.releaseId !== null && detail.isPending ? (

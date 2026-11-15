@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from "react-router"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { TooltipProvider } from "@/components/ui/tooltip"
+import * as clipboard from "@/lib/clipboard"
 import { makeListItem } from "@/test/fixtures"
 
 import { DeferredActionsProvider } from "./deferred-actions/provider"
@@ -92,7 +93,22 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock)
 })
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+})
+
+it.each([
+  ["Copy link to release", release.html_url],
+  ["Copy link to repository", release.repository.html_url],
+])("copies the selected URL from More actions → %s", async (label, url) => {
+  const copy = vi.spyOn(clipboard, "copyToClipboard").mockResolvedValue(undefined)
+  renderInbox("/inbox?release=1")
+  const menu = await screen.findByRole("button", { name: "More actions" })
+  fireEvent.keyDown(menu, { key: "ArrowDown" })
+  fireEvent.click(await screen.findByRole("menuitem", { name: new RegExp(label) }))
+  expect(copy).toHaveBeenCalledWith(url)
+})
 
 describe("inbox request failures", () => {
   it("shows a failed list request and lets the user retry", async () => {

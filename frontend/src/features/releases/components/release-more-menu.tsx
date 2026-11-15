@@ -11,12 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import type { Release } from "@/lib/api/types"
+import type { Release, Repository } from "@/lib/api/types"
 import { HOTKEYS } from "@/lib/hotkeys"
 
 interface ReleaseMoreMenuProps {
   release: Release
-  onCopyLink: () => void
+  onCopyLink: (target: Release | Repository) => void
   onHide: () => void
 }
 
@@ -47,10 +47,14 @@ export function ReleaseMoreMenu({ release, onCopyLink, onHide }: ReleaseMoreMenu
               Open repository
             </a>
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onCopyLink}>
+          <DropdownMenuItem onSelect={() => onCopyLink(release)}>
             <LinkIcon />
             Copy link to release
             <MenuKeyHint hotkey={HOTKEYS.copyLink} />
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => onCopyLink(repository)}>
+            <LinkIcon />
+            Copy link to repository
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

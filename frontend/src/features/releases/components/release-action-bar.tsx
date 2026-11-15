@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
 import { useMediaQuery } from "@/hooks/use-media-query"
 import { useNow } from "@/hooks/use-now"
-import type { Release } from "@/lib/api/types"
+import type { Release, Repository } from "@/lib/api/types"
 import { HOTKEYS } from "@/lib/hotkeys"
 
 import { useReleaseAssets } from "../api"
@@ -21,7 +21,7 @@ export interface ReleaseActions {
   onUnsubscribe: () => void
   onSnooze: (until: Date) => void
   onUnsnooze: () => void
-  onCopyLink: () => void
+  onCopyLink: (target: Release | Repository) => void
 }
 
 /** Actions waiting for their undo window to pass. */

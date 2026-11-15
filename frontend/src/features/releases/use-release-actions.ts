@@ -151,9 +151,10 @@ export function useReleaseActions({ view, search, entryOf, onLeave }: ReleaseAct
     )
   }
 
-  function copyLink(release: Release) {
-    copyToClipboard(release.html_url).then(
-      () => toast.success("Link copied", { description: releaseLabel(release) }),
+  function copyLink(target: Release | Repository) {
+    const description = "repository" in target ? releaseLabel(target) : target.full_name
+    copyToClipboard(target.html_url).then(
+      () => toast.success("Link copied", { description }),
       (error: unknown) => toastError("Couldn't copy the link", error)
     )
   }
