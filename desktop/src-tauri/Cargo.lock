@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "ghr-desktop"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "block2",
  "dispatch2",
